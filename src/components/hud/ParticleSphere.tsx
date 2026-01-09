@@ -18,9 +18,10 @@ interface Particle {
 interface ParticleSphereProps {
   isListening?: boolean;
   audioLevel?: number;
+  transparentMode?: boolean;
 }
 
-const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereProps) => {
+const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode = false }: ParticleSphereProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const angleRef = useRef(0);
@@ -28,6 +29,7 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
   const pulseRef = useRef(0);
   const isListeningRef = useRef(isListening);
   const audioLevelRef = useRef(audioLevel);
+  const transparentModeRef = useRef(transparentMode);
 
   // Update refs when props change
   useEffect(() => {
@@ -37,6 +39,10 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
   useEffect(() => {
     audioLevelRef.current = audioLevel;
   }, [audioLevel]);
+
+  useEffect(() => {
+    transparentModeRef.current = transparentMode;
+  }, [transparentMode]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     mouseRef.current.x = e.clientX;
@@ -98,8 +104,13 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
     let animationId: number;
 
     const animate = () => {
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Clear canvas - transparent or black background
+      if (transparentModeRef.current) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
 
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, VolumeX, ChevronUp } from 'lucide-react';
+import { Volume2, VolumeX, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
 import ParticleSphere from './ParticleSphere';
 import MinimizedMenu from './MinimizedMenu';
 import useSoundEffects from '@/hooks/useSoundEffects';
@@ -16,6 +16,7 @@ const HUDOverlay = ({
   isProcessing = false,
 }: HUDOverlayProps) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [transparentMode, setTransparentMode] = useState(false);
   const { playSound, toggleSound } = useSoundEffects();
   const { audioLevel, isCapturing, startCapturing, stopCapturing } = useAudioLevel();
   const playSoundRef = useRef(playSound);
@@ -100,6 +101,16 @@ const HUDOverlay = ({
       playSoundRef.current('click');
       toast('⏮️ Faixa anterior');
     }
+    // Modo transparente
+    else if (lower.includes('modo transparente') || lower.includes('modo widget') || lower.includes('overlay')) {
+      setTransparentMode(true);
+      playSoundRef.current('activate');
+      toast('🖥️ Modo widget ativado');
+    } else if (lower.includes('modo normal') || lower.includes('sair transparente') || lower.includes('voltar normal')) {
+      setTransparentMode(false);
+      playSoundRef.current('click');
+      toast('🖥️ Modo normal');
+    }
     // Navegação
     else if (lower.includes('abrir menu') || lower.includes('mostrar menu')) {
       playSoundRef.current('activate');
@@ -154,10 +165,17 @@ const HUDOverlay = ({
     return '';
   };
 
+  const handleToggleTransparent = () => {
+    const newMode = !transparentMode;
+    setTransparentMode(newMode);
+    playSound(newMode ? 'activate' : 'click');
+    toast(newMode ? '🖥️ Modo widget ativado' : '🖥️ Modo normal');
+  };
+
   return (
-    <div className="fixed inset-0 overflow-hidden bg-black">
+    <div className={`fixed inset-0 overflow-hidden transition-colors duration-500 ${transparentMode ? 'bg-transparent' : 'bg-black'}`}>
       {/* Particle Sphere Background */}
-      <ParticleSphere isListening={isListening} audioLevel={audioLevel} />
+      <ParticleSphere isListening={isListening} audioLevel={audioLevel} transparentMode={transparentMode} />
 
       {/* Minimized Menu */}
       <MinimizedMenu 
@@ -165,6 +183,7 @@ const HUDOverlay = ({
         isVoiceActive={isListening}
         onVoiceToggle={handleVoiceToggle}
         onWidgetCommandRef={onWidgetCommand}
+        transparentMode={transparentMode}
       />
 
       {/* Voice Commands Help */}
@@ -250,18 +269,38 @@ const HUDOverlay = ({
         <ChevronUp className="w-6 h-6 text-white/30" />
       </motion.div>
 
-      {/* Sound Toggle */}
-      <motion.button
-        onClick={handleToggleSound}
-        className="absolute bottom-6 right-6 flex items-center gap-2 text-white/40 hover:text-white/70 transition-colors"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-        <span className="text-[10px] font-mono tracking-wider">
-          SOM: {soundEnabled ? 'ON' : 'OFF'}
-        </span>
-      </motion.button>
+      {/* Bottom Controls */}
+      <div className="absolute bottom-6 right-6 flex items-center gap-4">
+        {/* Transparent Mode Toggle */}
+        <motion.button
+          onClick={handleToggleTransparent}
+          className={`flex items-center gap-2 transition-colors ${
+            transparentMode 
+              ? 'text-cyan-400 hover:text-cyan-300' 
+              : 'text-white/40 hover:text-white/70'
+          }`}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          {transparentMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          <span className="text-[10px] font-mono tracking-wider">
+            {transparentMode ? 'WIDGET' : 'NORMAL'}
+          </span>
+        </motion.button>
+
+        {/* Sound Toggle */}
+        <motion.button
+          onClick={handleToggleSound}
+          className="flex items-center gap-2 text-white/40 hover:text-white/70 transition-colors"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          <span className="text-[10px] font-mono tracking-wider">
+            SOM: {soundEnabled ? 'ON' : 'OFF'}
+          </span>
+        </motion.button>
+      </div>
     </div>
   );
 };
