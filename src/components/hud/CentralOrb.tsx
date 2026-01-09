@@ -5,270 +5,246 @@ export type OrbState = 'idle' | 'listening' | 'processing';
 
 interface CentralOrbProps {
   state?: OrbState;
-  onStateChange?: (state: OrbState) => void;
 }
 
 const CentralOrb = ({ state = 'idle' }: CentralOrbProps) => {
-  const [particles, setParticles] = useState<number[]>([]);
+  const [time, setTime] = useState(new Date());
 
   useEffect(() => {
-    setParticles(Array.from({ length: 20 }, (_, i) => i));
+    const interval = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Softer, safer colors for photosensitive users
-  const getOrbStyles = () => {
-    switch (state) {
-      case 'listening':
-        return {
-          borderColor: 'hsl(25, 70%, 50%)',
-          boxShadow: `
-            0 0 40px hsl(25 70% 50% / 0.4),
-            0 0 80px hsl(25 60% 45% / 0.2),
-            inset 0 0 40px hsl(25 70% 50% / 0.2)
-          `,
-        };
-      case 'processing':
-        return {
-          borderColor: 'hsl(200, 80%, 50%)',
-          boxShadow: `
-            0 0 40px hsl(200 80% 50% / 0.3),
-            0 0 80px hsl(185 80% 50% / 0.2),
-            inset 0 0 40px hsl(200 80% 50% / 0.15)
-          `,
-        };
-      default:
-        return {
-          borderColor: 'hsl(185, 100%, 50%)',
-          boxShadow: `
-            0 0 40px hsl(185 100% 50% / 0.4),
-            0 0 80px hsl(185 100% 50% / 0.2),
-            inset 0 0 40px hsl(185 100% 50% / 0.2)
-          `,
-        };
-    }
-  };
+  const hours = time.getHours();
+  const minutes = time.getMinutes().toString().padStart(2, '0');
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = (hours % 12 || 12).toString();
 
   const getRotationSpeed = () => {
     switch (state) {
-      case 'listening':
-        return 3;
-      case 'processing':
-        return 2;
-      default:
-        return 12;
+      case 'listening': return 4;
+      case 'processing': return 2;
+      default: return 15;
     }
   };
 
-  // Slower, gentler pulse for safety
-  const getPulseSpeed = () => {
+  const getColor = () => {
     switch (state) {
-      case 'listening':
-        return 1.5; // Much slower than before (was 0.3)
-      case 'processing':
-        return 2; // Slower (was 0.8)
-      default:
-        return 4;
+      case 'listening': return 'hsl(25 70% 50%)';
+      case 'processing': return 'hsl(200 80% 50%)';
+      default: return 'hsl(185 100% 50%)';
     }
   };
 
-  const getOrbColor = () => {
-    switch (state) {
-      case 'listening':
-        return 'hsl(25 70% 50%)';
-      case 'processing':
-        return 'hsl(200 80% 50%)';
-      default:
-        return 'hsl(185 100% 50%)';
-    }
-  };
+  // Generate tick marks for rings
+  const outerTicks = Array.from({ length: 60 }, (_, i) => i);
+  const middleTicks = Array.from({ length: 36 }, (_, i) => i);
+  const innerTicks = Array.from({ length: 24 }, (_, i) => i);
 
   return (
     <div className="relative flex items-center justify-center">
-      {/* Outer rotating rings */}
-      <motion.div
-        className="absolute w-64 h-64 rounded-full border border-primary/20"
-        animate={{ rotate: 360 }}
-        transition={{ duration: getRotationSpeed() * 3, repeat: Infinity, ease: 'linear' }}
-      >
-        {/* Ring markers */}
-        {[0, 90, 180, 270].map((deg) => (
-          <div
-            key={deg}
-            className="absolute w-2 h-2 bg-primary/60 rounded-full"
-            style={{
-              top: '50%',
-              left: '50%',
-              transform: `rotate(${deg}deg) translateX(126px) translateY(-50%)`,
-            }}
-          />
-        ))}
-      </motion.div>
-
-      <motion.div
-        className="absolute w-56 h-56 rounded-full border border-dashed border-primary/15"
-        animate={{ rotate: -360 }}
-        transition={{ duration: getRotationSpeed() * 2, repeat: Infinity, ease: 'linear' }}
+      {/* Outermost ring - subtle glow */}
+      <div
+        className="absolute w-[520px] h-[520px] rounded-full"
+        style={{
+          background: `radial-gradient(circle, transparent 45%, hsl(185 100% 50% / 0.02) 50%, transparent 55%)`,
+        }}
       />
 
+      {/* Outer rotating ring with detailed markers */}
       <motion.div
-        className="absolute w-48 h-48 rounded-full border border-secondary/30"
+        className="absolute w-[480px] h-[480px]"
         animate={{ rotate: 360 }}
-        transition={{ duration: getRotationSpeed() * 1.5, repeat: Infinity, ease: 'linear' }}
+        transition={{ duration: getRotationSpeed() * 2, repeat: Infinity, ease: 'linear' }}
       >
-        {/* Secondary ring markers */}
-        {[45, 135, 225, 315].map((deg) => (
-          <div
-            key={deg}
-            className="absolute w-1.5 h-1.5 bg-secondary/50 rounded-full"
-            style={{
-              top: '50%',
-              left: '50%',
-              transform: `rotate(${deg}deg) translateX(94px) translateY(-50%)`,
-            }}
-          />
-        ))}
-      </motion.div>
-
-      {/* Inner hexagonal frame */}
-      <motion.div
-        className="absolute w-44 h-44"
-        animate={{ rotate: -360 }}
-        transition={{ duration: getRotationSpeed() * 2.5, repeat: Infinity, ease: 'linear' }}
-      >
-        <svg viewBox="0 0 100 100" className="w-full h-full">
-          <polygon
-            points="50,5 95,27.5 95,72.5 50,95 5,72.5 5,27.5"
-            fill="none"
-            stroke={state === 'listening' 
-              ? 'hsl(25 70% 50% / 0.3)' 
-              : state === 'processing'
-                ? 'hsl(200 80% 50% / 0.3)'
-                : 'hsl(185 100% 50% / 0.25)'}
-            strokeWidth="0.5"
-          />
+        <svg viewBox="0 0 480 480" className="w-full h-full">
+          <circle cx="240" cy="240" r="235" fill="none" stroke="hsl(185 100% 50% / 0.15)" strokeWidth="1" />
+          <circle cx="240" cy="240" r="230" fill="none" stroke="hsl(185 100% 50% / 0.08)" strokeWidth="8" />
+          
+          {/* Outer tick marks */}
+          {outerTicks.map((i) => {
+            const angle = (i * 6 - 90) * (Math.PI / 180);
+            const isMain = i % 5 === 0;
+            const r1 = isMain ? 220 : 224;
+            const r2 = 235;
+            return (
+              <line
+                key={i}
+                x1={240 + r1 * Math.cos(angle)}
+                y1={240 + r1 * Math.sin(angle)}
+                x2={240 + r2 * Math.cos(angle)}
+                y2={240 + r2 * Math.sin(angle)}
+                stroke={isMain ? 'hsl(185 100% 50% / 0.6)' : 'hsl(185 100% 50% / 0.25)'}
+                strokeWidth={isMain ? 2 : 1}
+              />
+            );
+          })}
         </svg>
       </motion.div>
 
-      {/* Energy particles - gentler animation */}
-      <div className="absolute w-36 h-36">
-        {particles.map((i) => (
-          <motion.div
-            key={i}
-            className="absolute w-1 h-1 rounded-full"
+      {/* Second ring - counter rotating */}
+      <motion.div
+        className="absolute w-[400px] h-[400px]"
+        animate={{ rotate: -360 }}
+        transition={{ duration: getRotationSpeed() * 1.5, repeat: Infinity, ease: 'linear' }}
+      >
+        <svg viewBox="0 0 400 400" className="w-full h-full">
+          <circle cx="200" cy="200" r="195" fill="none" stroke="hsl(185 100% 50% / 0.12)" strokeWidth="1" />
+          
+          {/* Dashed inner ring */}
+          <circle 
+            cx="200" cy="200" r="185" 
+            fill="none" 
+            stroke="hsl(185 100% 50% / 0.3)" 
+            strokeWidth="4"
+            strokeDasharray="20 10"
+          />
+          
+          {/* Tick marks */}
+          {middleTicks.map((i) => {
+            const angle = (i * 10 - 90) * (Math.PI / 180);
+            return (
+              <line
+                key={i}
+                x1={200 + 170 * Math.cos(angle)}
+                y1={200 + 170 * Math.sin(angle)}
+                x2={200 + 180 * Math.cos(angle)}
+                y2={200 + 180 * Math.sin(angle)}
+                stroke="hsl(185 100% 50% / 0.5)"
+                strokeWidth="2"
+              />
+            );
+          })}
+        </svg>
+      </motion.div>
+
+      {/* Third ring - detailed tech ring */}
+      <motion.div
+        className="absolute w-[340px] h-[340px]"
+        animate={{ rotate: 360 }}
+        transition={{ duration: getRotationSpeed(), repeat: Infinity, ease: 'linear' }}
+      >
+        <svg viewBox="0 0 340 340" className="w-full h-full">
+          <circle cx="170" cy="170" r="165" fill="none" stroke="hsl(185 100% 50% / 0.1)" strokeWidth="1" />
+          <circle cx="170" cy="170" r="155" fill="none" stroke="hsl(185 100% 50% / 0.2)" strokeWidth="2" />
+          
+          {/* Arrow markers */}
+          {[0, 90, 180, 270].map((deg) => {
+            const angle = (deg - 90) * (Math.PI / 180);
+            const cx = 170 + 160 * Math.cos(angle);
+            const cy = 170 + 160 * Math.sin(angle);
+            return (
+              <polygon
+                key={deg}
+                points={`${cx},${cy - 6} ${cx + 4},${cy + 4} ${cx - 4},${cy + 4}`}
+                fill="hsl(185 100% 50% / 0.6)"
+                transform={`rotate(${deg}, ${cx}, ${cy})`}
+              />
+            );
+          })}
+          
+          {/* Inner ticks */}
+          {innerTicks.map((i) => {
+            const angle = (i * 15 - 90) * (Math.PI / 180);
+            return (
+              <rect
+                key={i}
+                x={170 + 140 * Math.cos(angle) - 2}
+                y={170 + 140 * Math.sin(angle) - 1}
+                width="8"
+                height="3"
+                fill="hsl(185 100% 50% / 0.4)"
+                transform={`rotate(${i * 15}, ${170 + 140 * Math.cos(angle)}, ${170 + 140 * Math.sin(angle)})`}
+              />
+            );
+          })}
+        </svg>
+      </motion.div>
+
+      {/* Inner pulsing ring */}
+      <motion.div
+        className="absolute w-[260px] h-[260px]"
+        animate={{ 
+          scale: state === 'listening' ? [1, 1.02, 1] : [1, 1.01, 1],
+          opacity: [0.6, 1, 0.6] 
+        }}
+        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <svg viewBox="0 0 260 260" className="w-full h-full">
+          <circle 
+            cx="130" cy="130" r="125" 
+            fill="none" 
+            stroke={getColor()}
+            strokeWidth="3"
             style={{
-              background: getOrbColor(),
-              left: '50%',
-              top: '50%',
-            }}
-            animate={{
-              x: [0, Math.cos((i * 360) / 20 * Math.PI / 180) * 80],
-              y: [0, Math.sin((i * 360) / 20 * Math.PI / 180) * 80],
-              opacity: [0, 0.6, 0], // Reduced max opacity
-              scale: [0.5, 1, 0.5],
-            }}
-            transition={{
-              duration: state === 'listening' ? 2 : state === 'processing' ? 2.5 : 4,
-              repeat: Infinity,
-              delay: i * 0.2,
-              ease: 'easeInOut',
+              filter: `drop-shadow(0 0 10px ${getColor()})`,
             }}
           />
-        ))}
+          <circle cx="130" cy="130" r="115" fill="none" stroke="hsl(185 100% 50% / 0.15)" strokeWidth="1" />
+        </svg>
+      </motion.div>
+
+      {/* Innermost ring with data */}
+      <div className="absolute w-[200px] h-[200px]">
+        <svg viewBox="0 0 200 200" className="w-full h-full">
+          <circle cx="100" cy="100" r="95" fill="hsl(220 30% 6% / 0.6)" stroke="hsl(185 100% 50% / 0.2)" strokeWidth="1" />
+          <circle cx="100" cy="100" r="85" fill="none" stroke="hsl(185 100% 50% / 0.1)" strokeWidth="1" strokeDasharray="4 4" />
+        </svg>
       </div>
 
-      {/* Main orb core - gentler animations */}
-      <motion.div
-        className="relative w-32 h-32 rounded-full border-2 backdrop-blur-sm"
-        style={getOrbStyles()}
-        animate={{
-          scale: state === 'listening' 
-            ? [1, 1.03, 1] // Much smaller scale change
-            : state === 'processing' 
-              ? [1, 1.01, 1.02, 1] 
-              : [1, 1.02, 1],
-        }}
-        transition={{
-          duration: getPulseSpeed(),
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-      >
-        {/* Inner core gradient */}
-        <div
-          className="absolute inset-2 rounded-full"
-          style={{
-            background: state === 'listening'
-              ? 'radial-gradient(circle, hsl(25 70% 50% / 0.2) 0%, hsl(25 60% 45% / 0.1) 50%, transparent 70%)'
-              : state === 'processing'
-                ? 'radial-gradient(circle, hsl(200 80% 50% / 0.25) 0%, hsl(185 80% 50% / 0.1) 50%, transparent 70%)'
-                : 'radial-gradient(circle, hsl(185 100% 50% / 0.2) 0%, hsl(235 80% 50% / 0.08) 50%, transparent 70%)',
-          }}
-        />
-
-        {/* Core center point - gentler pulse */}
+      {/* Center content */}
+      <div className="absolute flex flex-col items-center justify-center">
+        {/* Time display */}
+        <div className="flex items-baseline gap-1 mb-1">
+          <span className="text-4xl font-bold font-orbitron text-primary text-glow">
+            {displayHours}:{minutes}
+          </span>
+          <span className="text-sm text-primary/60 font-orbitron">{period}</span>
+        </div>
+        
+        {/* Status indicator */}
         <motion.div
-          className="absolute inset-0 flex items-center justify-center"
-          animate={{ opacity: [0.6, 0.9, 0.6] }} // Reduced opacity range
-          transition={{ duration: getPulseSpeed(), repeat: Infinity }}
+          className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{
+            background: `radial-gradient(circle, ${getColor()} 0%, transparent 70%)`,
+            boxShadow: `0 0 20px ${getColor()}`,
+          }}
+          animate={{ scale: [1, 1.1, 1] }}
+          transition={{ duration: 2, repeat: Infinity }}
         >
-          <div
-            className="w-6 h-6 rounded-full"
-            style={{
-              background: state === 'listening'
-                ? 'radial-gradient(circle, hsl(25 70% 60%) 0%, hsl(25 70% 50%) 50%, transparent 100%)'
-                : state === 'processing'
-                  ? 'radial-gradient(circle, hsl(200 80% 60%) 0%, hsl(200 80% 50%) 50%, transparent 100%)'
-                  : 'radial-gradient(circle, hsl(185 100% 60%) 0%, hsl(185 100% 50%) 50%, transparent 100%)',
-              boxShadow: state === 'listening'
-                ? '0 0 20px hsl(25 70% 50% / 0.5)'
-                : state === 'processing'
-                  ? '0 0 20px hsl(200 80% 50% / 0.4)'
-                  : '0 0 20px hsl(185 100% 50% / 0.5)',
-            }}
-          />
+          <div className="w-3 h-3 rounded-full bg-primary" />
         </motion.div>
+      </div>
 
-        {/* Rotating inner ring */}
-        <motion.div
-          className="absolute inset-3 rounded-full border border-primary/30"
-          animate={{ rotate: state === 'listening' ? -360 : 360 }}
-          transition={{
-            duration: getRotationSpeed(),
-            repeat: Infinity,
-            ease: 'linear',
-          }}
-        />
-      </motion.div>
-
-      {/* State indicator text */}
-      <motion.div
-        key={state}
-        className="absolute -bottom-14 text-center"
-        initial={{ opacity: 0, y: -5 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <span
-          className={`text-xs uppercase tracking-[0.25em] font-orbitron ${
-            state === 'listening' 
-              ? 'text-hud-orange' 
-              : state === 'processing'
-                ? 'text-secondary'
-                : 'text-primary text-glow'
-          }`}
-          style={{
-            textShadow: state === 'listening'
-              ? '0 0 10px hsl(25 70% 50% / 0.5)'
-              : state === 'processing'
-                ? '0 0 10px hsl(200 80% 50% / 0.4)'
-                : '0 0 10px hsl(185 100% 50%)',
-          }}
+      {/* Date display at bottom of orb */}
+      <div className="absolute bottom-[-60px] text-center">
+        <motion.span
+          className="text-xs uppercase tracking-[0.3em] font-orbitron text-primary/70"
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 3, repeat: Infinity }}
         >
-          {state === 'idle' && '// AGUARDANDO COMANDO'}
-          {state === 'listening' && '// ESCUTANDO...'}
-          {state === 'processing' && '// PROCESSANDO...'}
-        </span>
-      </motion.div>
+          {time.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).toUpperCase()}
+        </motion.span>
+      </div>
+
+      {/* Corner labels */}
+      {['UP', 'CORP', 'CTRL', 'DESK'].map((label, i) => {
+        const positions = [
+          { top: '-180px', left: '-60px' },
+          { top: '-180px', right: '-60px' },
+          { bottom: '-180px', left: '-60px' },
+          { bottom: '-180px', right: '-60px' },
+        ];
+        return (
+          <div
+            key={label}
+            className="absolute text-[8px] font-mono text-primary/40 tracking-widest"
+            style={positions[i] as any}
+          >
+            {label}
+          </div>
+        );
+      })}
     </div>
   );
 };
