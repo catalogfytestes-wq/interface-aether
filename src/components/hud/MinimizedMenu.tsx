@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, MutableRefObject } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Menu, 
@@ -28,13 +28,28 @@ interface MinimizedMenuProps {
   onPlaySound?: (type: 'hover' | 'click' | 'activate') => void;
   isVoiceActive?: boolean;
   onVoiceToggle?: () => void;
+  onWidgetCommandRef?: MutableRefObject<(widget: string | null) => void>;
 }
 
 type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagnostics' | 'notifications' | 'network' | 'battery' | null;
 
-const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle }: MinimizedMenuProps) => {
+const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef }: MinimizedMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeWidget, setActiveWidget] = useState<WidgetType>(null);
+
+  // Register voice command handler
+  useEffect(() => {
+    if (onWidgetCommandRef) {
+      onWidgetCommandRef.current = (widget: string | null) => {
+        if (widget === null) {
+          setActiveWidget(null);
+        } else {
+          setActiveWidget(widget as WidgetType);
+          if (!isOpen) setIsOpen(true);
+        }
+      };
+    }
+  }, [onWidgetCommandRef, isOpen]);
 
   const menuItems = [
     { id: 'clock' as WidgetType, icon: Clock, label: 'Relógio' },
