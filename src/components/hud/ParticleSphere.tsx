@@ -17,7 +17,7 @@ interface Particle {
 
 interface ParticleSphereProps {
   isListening?: boolean;
-  audioLevel?: number; // 0-1 range for voice amplitude
+  audioLevel?: number;
 }
 
 const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereProps) => {
@@ -26,8 +26,18 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
   const angleRef = useRef(0);
   const mouseRef = useRef({ x: 0, y: 0, active: false });
   const pulseRef = useRef(0);
+  const isListeningRef = useRef(isListening);
+  const audioLevelRef = useRef(audioLevel);
 
-  // Handle mouse movement
+  // Update refs when props change
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  useEffect(() => {
+    audioLevelRef.current = audioLevel;
+  }, [audioLevel]);
+
   const handleMouseMove = useCallback((e: MouseEvent) => {
     mouseRef.current.x = e.clientX;
     mouseRef.current.y = e.clientY;
@@ -51,37 +61,41 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
     const resizeCanvas = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      initParticles();
+    };
+
+    const initParticles = () => {
+      const particleCount = 800;
+      const baseRadius = Math.min(canvas.width, canvas.height) * 0.25;
+
+      particlesRef.current = Array.from({ length: particleCount }, () => {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        
+        const x = baseRadius * Math.sin(phi) * Math.cos(theta);
+        const y = baseRadius * Math.sin(phi) * Math.sin(theta);
+        const z = baseRadius * Math.cos(phi);
+        
+        return {
+          x,
+          y,
+          z,
+          originalX: x,
+          originalY: y,
+          originalZ: z,
+          size: Math.random() * 1.5 + 0.5,
+          opacity: Math.random() * 0.5 + 0.3,
+          velocityX: 0,
+          velocityY: 0,
+          velocityZ: 0,
+        };
+      });
     };
 
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // Create particles on sphere surface
-    const particleCount = 800;
-    const baseRadius = Math.min(canvas.width, canvas.height) * 0.25;
-
-    particlesRef.current = Array.from({ length: particleCount }, () => {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      
-      const x = baseRadius * Math.sin(phi) * Math.cos(theta);
-      const y = baseRadius * Math.sin(phi) * Math.sin(theta);
-      const z = baseRadius * Math.cos(phi);
-      
-      return {
-        x,
-        y,
-        z,
-        originalX: x,
-        originalY: y,
-        originalZ: z,
-        size: Math.random() * 1.5 + 0.5,
-        opacity: Math.random() * 0.5 + 0.3,
-        velocityX: 0,
-        velocityY: 0,
-        velocityZ: 0,
-      };
-    });
+    let animationId: number;
 
     const animate = () => {
       ctx.fillStyle = 'black';
@@ -93,20 +107,25 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
       
       angleRef.current += 0.002;
 
-      // Update pulse based on listening state
-      if (isListening) {
-        pulseRef.current = audioLevel > 0 ? audioLevel : 0.3 + Math.sin(Date.now() * 0.01) * 0.2;
+      // Update pulse based on listening state - use refs
+      const currentListening = isListeningRef.current;
+      const currentAudioLevel = audioLevelRef.current;
+
+      if (currentListening) {
+        // Stronger pulse effect based on audio level
+        const targetPulse = currentAudioLevel > 0.01 
+          ? Math.min(1, currentAudioLevel * 2) 
+          : 0.2 + Math.sin(Date.now() * 0.003) * 0.1;
+        pulseRef.current = pulseRef.current + (targetPulse - pulseRef.current) * 0.1;
       } else {
         pulseRef.current = Math.max(0, pulseRef.current - 0.02);
       }
 
       // Update particle positions
       particlesRef.current.forEach(p => {
-        // Calculate rotation
         const cos = Math.cos(angleRef.current);
         const sin = Math.sin(angleRef.current);
         const rotatedX = p.x * cos - p.z * sin;
-        const rotatedZ = p.x * sin + p.z * cos;
         
         const screenX = centerX + rotatedX;
         const screenY = centerY + p.y;
@@ -127,29 +146,32 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
           }
         }
 
-        // Voice pulse effect
-        if (pulseRef.current > 0) {
-          const pulseStrength = pulseRef.current * 30;
+        // Voice pulse effect - radial expansion/contraction
+        if (pulseRef.current > 0.01) {
           const distFromOrigin = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
-          const normalX = p.x / distFromOrigin;
-          const normalY = p.y / distFromOrigin;
-          const normalZ = p.z / distFromOrigin;
-          
-          const pulseFactor = Math.sin(Date.now() * 0.008 + distFromOrigin * 0.01) * pulseStrength;
-          
-          p.velocityX += normalX * pulseFactor * 0.02;
-          p.velocityY += normalY * pulseFactor * 0.02;
-          p.velocityZ += normalZ * pulseFactor * 0.02;
+          if (distFromOrigin > 0) {
+            const normalX = p.x / distFromOrigin;
+            const normalY = p.y / distFromOrigin;
+            const normalZ = p.z / distFromOrigin;
+            
+            // Pulsing expansion effect
+            const pulseStrength = pulseRef.current * 50;
+            const pulseFactor = Math.sin(Date.now() * 0.015) * pulseStrength;
+            
+            p.velocityX += normalX * pulseFactor * 0.015;
+            p.velocityY += normalY * pulseFactor * 0.015;
+            p.velocityZ += normalZ * pulseFactor * 0.015;
+          }
         }
 
         // Spring back to original position
-        const springStrength = 0.03;
+        const springStrength = 0.04;
         p.velocityX += (p.originalX - p.x) * springStrength;
         p.velocityY += (p.originalY - p.y) * springStrength;
         p.velocityZ += (p.originalZ - p.z) * springStrength;
 
         // Apply friction
-        const friction = 0.92;
+        const friction = 0.9;
         p.velocityX *= friction;
         p.velocityY *= friction;
         p.velocityZ *= friction;
@@ -180,9 +202,9 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
         let size = p.size * (0.5 + depth * 0.5);
         
         // Add glow when listening
-        if (pulseRef.current > 0) {
-          opacity = Math.min(1, opacity + pulseRef.current * 0.3);
-          size = size * (1 + pulseRef.current * 0.3);
+        if (pulseRef.current > 0.01) {
+          opacity = Math.min(1, opacity + pulseRef.current * 0.4);
+          size = size * (1 + pulseRef.current * 0.5);
         }
         
         ctx.beginPath();
@@ -197,10 +219,10 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
         ctx.fill();
       });
 
-      requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(animate);
     };
 
-    const animationId = requestAnimationFrame(animate);
+    animationId = requestAnimationFrame(animate);
 
     return () => {
       window.removeEventListener('resize', resizeCanvas);
@@ -208,7 +230,7 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
       window.removeEventListener('mouseleave', handleMouseLeave);
       cancelAnimationFrame(animationId);
     };
-  }, [isListening, audioLevel, handleMouseMove, handleMouseLeave]);
+  }, [handleMouseMove, handleMouseLeave]);
 
   return (
     <motion.canvas

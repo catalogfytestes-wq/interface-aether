@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Volume2, VolumeX, ChevronUp } from 'lucide-react';
 import ParticleSphere from './ParticleSphere';
@@ -18,74 +18,57 @@ const HUDOverlay = ({
   const [soundEnabled, setSoundEnabled] = useState(true);
   const { playSound, toggleSound } = useSoundEffects();
   const { audioLevel, isCapturing, startCapturing, stopCapturing } = useAudioLevel();
+  const playSoundRef = useRef(playSound);
+  
+  useEffect(() => {
+    playSoundRef.current = playSound;
+  }, [playSound]);
 
-  // Voice commands
-  const voiceCommands = useMemo(() => [
-    {
-      command: 'abrir música',
-      action: () => {
-        playSound('activate');
-        toast('🎵 Abrindo player de música...');
-      },
-    },
-    {
-      command: 'abrir clima',
-      action: () => {
-        playSound('activate');
-        toast('🌤️ Abrindo widget de clima...');
-      },
-    },
-    {
-      command: 'abrir calendário',
-      action: () => {
-        playSound('activate');
-        toast('📅 Abrindo calendário...');
-      },
-    },
-    {
-      command: 'abrir relógio',
-      action: () => {
-        playSound('activate');
-        toast('🕐 Abrindo relógio...');
-      },
-    },
-    {
-      command: 'abrir sistema',
-      action: () => {
-        playSound('activate');
-        toast('⚙️ Abrindo diagnósticos do sistema...');
-      },
-    },
-    {
-      command: 'desativar som',
-      action: () => {
-        setSoundEnabled(false);
-        toggleSound(false);
-        toast('🔇 Som desativado');
-      },
-    },
-    {
-      command: 'ativar som',
-      action: () => {
-        setSoundEnabled(true);
-        toggleSound(true);
-        toast('🔊 Som ativado');
-      },
-    },
-  ], [playSound, toggleSound]);
+  // Handle voice commands
+  const handleFinalTranscript = useCallback((transcript: string) => {
+    const lower = transcript.toLowerCase().trim();
+    console.log('Final transcript:', lower);
+    
+    if (lower.includes('abrir música') || lower.includes('abrir musica')) {
+      playSoundRef.current('activate');
+      toast('🎵 Abrindo player de música...');
+    } else if (lower.includes('abrir clima')) {
+      playSoundRef.current('activate');
+      toast('🌤️ Abrindo widget de clima...');
+    } else if (lower.includes('abrir calendário') || lower.includes('abrir calendario')) {
+      playSoundRef.current('activate');
+      toast('📅 Abrindo calendário...');
+    } else if (lower.includes('abrir relógio') || lower.includes('abrir relogio')) {
+      playSoundRef.current('activate');
+      toast('🕐 Abrindo relógio...');
+    } else if (lower.includes('abrir sistema')) {
+      playSoundRef.current('activate');
+      toast('⚙️ Abrindo diagnósticos do sistema...');
+    } else if (lower.includes('desativar som')) {
+      setSoundEnabled(false);
+      toggleSound(false);
+      toast('🔇 Som desativado');
+    } else if (lower.includes('ativar som')) {
+      setSoundEnabled(true);
+      toggleSound(true);
+      toast('🔊 Som ativado');
+    }
+  }, [toggleSound]);
 
   const { isListening, transcript, isSupported, toggleListening } = useVoiceRecognition({
-    commands: voiceCommands,
     onTranscript: (text) => {
       console.log('Transcript:', text);
     },
+    onFinalTranscript: handleFinalTranscript,
   });
 
   // Sync audio capture with voice listening
   useEffect(() => {
     if (isListening && !isCapturing) {
+      console.log('Starting audio capture...');
       startCapturing();
     } else if (!isListening && isCapturing) {
+      console.log('Stopping audio capture...');
       stopCapturing();
     }
   }, [isListening, isCapturing, startCapturing, stopCapturing]);
@@ -97,17 +80,19 @@ const HUDOverlay = ({
     if (soundEnabled) playSound('click');
   };
 
-  const handleVoiceToggle = useCallback(() => {
+  const handleVoiceToggle = useCallback(async () => {
     if (!isSupported) {
       toast.error('Reconhecimento de voz não suportado neste navegador');
       return;
     }
-    toggleListening();
+    
     if (!isListening) {
       toast('🎤 Ouvindo comandos de voz...', {
         description: 'Diga "abrir música", "abrir clima", etc.',
       });
     }
+    
+    toggleListening();
   }, [isSupported, toggleListening, isListening]);
 
   const getStatusText = () => {
@@ -159,18 +144,23 @@ const HUDOverlay = ({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="absolute bottom-32 left-1/2 -translate-x-1/2 flex gap-1"
+            className="absolute bottom-32 left-1/2 -translate-x-1/2 flex gap-1 items-end h-12"
           >
-            {Array.from({ length: 20 }).map((_, i) => (
-              <motion.div
-                key={i}
-                className="w-1 bg-white/60 rounded-full"
-                animate={{
-                  height: Math.max(4, audioLevel * 40 * (1 + Math.sin(Date.now() * 0.01 + i) * 0.5)),
-                }}
-                transition={{ duration: 0.05 }}
-              />
-            ))}
+            {Array.from({ length: 30 }).map((_, i) => {
+              const centerOffset = Math.abs(i - 15) / 15;
+              const heightMultiplier = 1 - centerOffset * 0.5;
+              const height = Math.max(4, audioLevel * 48 * heightMultiplier);
+              
+              return (
+                <motion.div
+                  key={i}
+                  className="w-1 bg-white/70 rounded-full"
+                  style={{ height }}
+                  animate={{ height }}
+                  transition={{ duration: 0.05 }}
+                />
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>
@@ -182,7 +172,7 @@ const HUDOverlay = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="absolute bottom-24 left-1/2 -translate-x-1/2 max-w-md text-center"
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 max-w-md text-center"
           >
             <span className="text-white/60 text-sm font-light tracking-widest uppercase">
               {getStatusText()}
