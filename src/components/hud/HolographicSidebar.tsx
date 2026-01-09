@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
-import { Mic, ScanSearch, Settings, ChevronRight } from 'lucide-react';
+import { Mic, ScanSearch, Settings, ChevronRight, Volume2, VolumeX } from 'lucide-react';
 
 interface SidebarButton {
   id: string;
@@ -13,12 +13,20 @@ interface HolographicSidebarProps {
   onActivateVoice?: () => void;
   onIntelScan?: () => void;
   onSettings?: () => void;
+  onHover?: () => void;
+  onClick?: () => void;
+  soundEnabled?: boolean;
+  onToggleSound?: () => void;
 }
 
 const HolographicSidebar = ({
   onActivateVoice,
   onIntelScan,
   onSettings,
+  onHover,
+  onClick,
+  soundEnabled = true,
+  onToggleSound,
 }: HolographicSidebarProps) => {
   const [isVisible, setIsVisible] = useState(false);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
@@ -43,6 +51,16 @@ const HolographicSidebar = ({
       onClick: onSettings,
     },
   ];
+
+  const handleButtonHover = (id: string) => {
+    setHoveredButton(id);
+    onHover?.();
+  };
+
+  const handleButtonClick = (callback?: () => void) => {
+    onClick?.();
+    callback?.();
+  };
 
   return (
     <>
@@ -96,9 +114,9 @@ const HolographicSidebar = ({
                     initial={{ opacity: 0, x: -30 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.1 + index * 0.1 }}
-                    onMouseEnter={() => setHoveredButton(button.id)}
+                    onMouseEnter={() => handleButtonHover(button.id)}
                     onMouseLeave={() => setHoveredButton(null)}
-                    onClick={button.onClick}
+                    onClick={() => handleButtonClick(button.onClick)}
                   >
                     <div
                       className={`
@@ -149,6 +167,34 @@ const HolographicSidebar = ({
                     )}
                   </motion.button>
                 ))}
+
+                {/* Sound toggle button */}
+                <motion.button
+                  className="w-full group relative mt-4"
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 }}
+                  onMouseEnter={() => handleButtonHover('sound')}
+                  onMouseLeave={() => setHoveredButton(null)}
+                  onClick={() => handleButtonClick(onToggleSound)}
+                >
+                  <div
+                    className={`
+                      flex items-center gap-4 p-4 rounded transition-all duration-300
+                      ${hoveredButton === 'sound'
+                        ? 'bg-primary/20 border border-primary/50'
+                        : 'bg-primary/5 border border-primary/10'
+                      }
+                    `}
+                  >
+                    <span className={`transition-all duration-300 ${hoveredButton === 'sound' ? 'text-primary' : 'text-primary/60'}`}>
+                      {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+                    </span>
+                    <span className={`text-xs uppercase tracking-wider font-orbitron transition-all duration-300 ${hoveredButton === 'sound' ? 'text-primary' : 'text-primary/60'}`}>
+                      SOM: {soundEnabled ? 'LIGADO' : 'DESLIGADO'}
+                    </span>
+                  </div>
+                </motion.button>
               </nav>
 
               {/* Footer status */}
