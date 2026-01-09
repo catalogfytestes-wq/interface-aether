@@ -24,34 +24,86 @@ const HUDOverlay = ({
     playSoundRef.current = playSound;
   }, [playSound]);
 
+  // Voice command callbacks
+  const onWidgetCommand = useRef<(widget: string | null) => void>(() => {});
+
   // Handle voice commands
   const handleFinalTranscript = useCallback((transcript: string) => {
     const lower = transcript.toLowerCase().trim();
     console.log('Final transcript:', lower);
     
-    if (lower.includes('abrir música') || lower.includes('abrir musica')) {
+    // Abrir widgets
+    if (lower.includes('abrir música') || lower.includes('abrir musica') || lower.includes('tocar música') || lower.includes('tocar musica')) {
       playSoundRef.current('activate');
+      onWidgetCommand.current('music');
       toast('🎵 Abrindo player de música...');
-    } else if (lower.includes('abrir clima')) {
+    } else if (lower.includes('abrir clima') || lower.includes('ver clima') || lower.includes('tempo')) {
       playSoundRef.current('activate');
+      onWidgetCommand.current('weather');
       toast('🌤️ Abrindo widget de clima...');
-    } else if (lower.includes('abrir calendário') || lower.includes('abrir calendario')) {
+    } else if (lower.includes('abrir calendário') || lower.includes('abrir calendario') || lower.includes('agenda')) {
       playSoundRef.current('activate');
+      onWidgetCommand.current('calendar');
       toast('📅 Abrindo calendário...');
-    } else if (lower.includes('abrir relógio') || lower.includes('abrir relogio')) {
+    } else if (lower.includes('abrir relógio') || lower.includes('abrir relogio') || lower.includes('que horas') || lower.includes('ver horas')) {
       playSoundRef.current('activate');
+      onWidgetCommand.current('clock');
       toast('🕐 Abrindo relógio...');
-    } else if (lower.includes('abrir sistema')) {
+    } else if (lower.includes('abrir sistema') || lower.includes('diagnóstico') || lower.includes('diagnostico') || lower.includes('status')) {
       playSoundRef.current('activate');
+      onWidgetCommand.current('diagnostics');
       toast('⚙️ Abrindo diagnósticos do sistema...');
-    } else if (lower.includes('desativar som')) {
+    } else if (lower.includes('abrir radar') || lower.includes('ver radar')) {
+      playSoundRef.current('activate');
+      onWidgetCommand.current('radar');
+      toast('📡 Abrindo radar...');
+    } else if (lower.includes('abrir notificações') || lower.includes('abrir notificacoes') || lower.includes('alertas')) {
+      playSoundRef.current('activate');
+      onWidgetCommand.current('notifications');
+      toast('🔔 Abrindo notificações...');
+    } else if (lower.includes('abrir rede') || lower.includes('ver rede') || lower.includes('conexão') || lower.includes('conexao')) {
+      playSoundRef.current('activate');
+      onWidgetCommand.current('network');
+      toast('📶 Abrindo status da rede...');
+    } else if (lower.includes('abrir energia') || lower.includes('bateria')) {
+      playSoundRef.current('activate');
+      onWidgetCommand.current('battery');
+      toast('🔋 Abrindo status de energia...');
+    }
+    // Fechar widgets
+    else if (lower.includes('fechar') || lower.includes('sair') || lower.includes('encerrar')) {
+      playSoundRef.current('click');
+      onWidgetCommand.current(null);
+      toast('❌ Widget fechado');
+    }
+    // Controle de som
+    else if (lower.includes('desativar som') || lower.includes('silenciar') || lower.includes('mudo')) {
       setSoundEnabled(false);
       toggleSound(false);
       toast('🔇 Som desativado');
-    } else if (lower.includes('ativar som')) {
+    } else if (lower.includes('ativar som') || lower.includes('ligar som')) {
       setSoundEnabled(true);
       toggleSound(true);
       toast('🔊 Som ativado');
+    }
+    // Controle de música
+    else if (lower.includes('pausar') || lower.includes('parar música') || lower.includes('parar musica')) {
+      playSoundRef.current('click');
+      toast('⏸️ Música pausada');
+    } else if (lower.includes('continuar') || lower.includes('play') || lower.includes('reproduzir')) {
+      playSoundRef.current('click');
+      toast('▶️ Reproduzindo música');
+    } else if (lower.includes('próxima') || lower.includes('proxima') || lower.includes('próximo') || lower.includes('proximo') || lower.includes('next')) {
+      playSoundRef.current('click');
+      toast('⏭️ Próxima faixa');
+    } else if (lower.includes('anterior') || lower.includes('voltar faixa')) {
+      playSoundRef.current('click');
+      toast('⏮️ Faixa anterior');
+    }
+    // Navegação
+    else if (lower.includes('abrir menu') || lower.includes('mostrar menu')) {
+      playSoundRef.current('activate');
+      toast('📋 Menu aberto');
     }
   }, [toggleSound]);
 
@@ -112,6 +164,7 @@ const HUDOverlay = ({
         onPlaySound={soundEnabled ? playSound : undefined}
         isVoiceActive={isListening}
         onVoiceToggle={handleVoiceToggle}
+        onWidgetCommandRef={onWidgetCommand}
       />
 
       {/* Voice Commands Help */}
@@ -124,11 +177,18 @@ const HUDOverlay = ({
             className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-4 py-2"
           >
             <div className="text-[10px] text-white/60 text-center space-y-1">
-              <div className="text-white/80 font-medium">Comandos disponíveis:</div>
-              <div className="flex flex-wrap justify-center gap-2">
-                {['música', 'clima', 'calendário', 'relógio', 'sistema'].map((cmd) => (
+              <div className="text-white/80 font-medium mb-2">Comandos disponíveis:</div>
+              <div className="flex flex-wrap justify-center gap-2 max-w-sm">
+                {['música', 'clima', 'calendário', 'relógio', 'sistema', 'radar', 'notificações'].map((cmd) => (
                   <span key={cmd} className="px-2 py-0.5 bg-white/10 rounded text-white/50">
                     "abrir {cmd}"
+                  </span>
+                ))}
+              </div>
+              <div className="flex flex-wrap justify-center gap-2 mt-1">
+                {['fechar', 'pausar', 'próxima', 'silenciar'].map((cmd) => (
+                  <span key={cmd} className="px-2 py-0.5 bg-cyan-500/20 rounded text-cyan-400/70">
+                    "{cmd}"
                   </span>
                 ))}
               </div>

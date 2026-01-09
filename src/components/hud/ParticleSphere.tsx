@@ -112,13 +112,14 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
       const currentAudioLevel = audioLevelRef.current;
 
       if (currentListening) {
-        // Stronger pulse effect based on audio level
-        const targetPulse = currentAudioLevel > 0.01 
-          ? Math.min(1, currentAudioLevel * 2) 
-          : 0.2 + Math.sin(Date.now() * 0.003) * 0.1;
-        pulseRef.current = pulseRef.current + (targetPulse - pulseRef.current) * 0.1;
+        // Much stronger and more responsive pulse effect based on audio level
+        const targetPulse = currentAudioLevel > 0.02 
+          ? Math.min(1.5, currentAudioLevel * 4) // Amplified response
+          : 0.15 + Math.sin(Date.now() * 0.004) * 0.08; // Subtle idle breathing
+        // Faster interpolation for more responsive feel
+        pulseRef.current = pulseRef.current + (targetPulse - pulseRef.current) * 0.25;
       } else {
-        pulseRef.current = Math.max(0, pulseRef.current - 0.02);
+        pulseRef.current = Math.max(0, pulseRef.current - 0.03);
       }
 
       // Update particle positions
@@ -146,21 +147,22 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
           }
         }
 
-        // Voice pulse effect - radial expansion/contraction
-        if (pulseRef.current > 0.01) {
+        // Voice pulse effect - radial expansion/contraction (ENHANCED)
+        if (pulseRef.current > 0.005) {
           const distFromOrigin = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
           if (distFromOrigin > 0) {
             const normalX = p.x / distFromOrigin;
             const normalY = p.y / distFromOrigin;
             const normalZ = p.z / distFromOrigin;
             
-            // Pulsing expansion effect
-            const pulseStrength = pulseRef.current * 50;
-            const pulseFactor = Math.sin(Date.now() * 0.015) * pulseStrength;
+            // Much stronger pulsing expansion effect
+            const pulseStrength = pulseRef.current * 120; // Increased from 50
+            const pulseFactor = Math.sin(Date.now() * 0.02) * pulseStrength; // Faster oscillation
             
-            p.velocityX += normalX * pulseFactor * 0.015;
-            p.velocityY += normalY * pulseFactor * 0.015;
-            p.velocityZ += normalZ * pulseFactor * 0.015;
+            // Stronger velocity application
+            p.velocityX += normalX * pulseFactor * 0.04;
+            p.velocityY += normalY * pulseFactor * 0.04;
+            p.velocityZ += normalZ * pulseFactor * 0.04;
           }
         }
 
@@ -201,10 +203,10 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0 }: ParticleSphereP
         let opacity = p.opacity * (0.3 + depth * 0.7);
         let size = p.size * (0.5 + depth * 0.5);
         
-        // Add glow when listening
-        if (pulseRef.current > 0.01) {
-          opacity = Math.min(1, opacity + pulseRef.current * 0.4);
-          size = size * (1 + pulseRef.current * 0.5);
+        // Add glow when listening - ENHANCED
+        if (pulseRef.current > 0.005) {
+          opacity = Math.min(1, opacity + pulseRef.current * 0.6);
+          size = size * (1 + pulseRef.current * 0.8);
         }
         
         ctx.beginPath();
