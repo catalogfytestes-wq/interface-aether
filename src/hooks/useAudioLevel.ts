@@ -7,8 +7,8 @@ interface UseAudioLevelOptions {
 }
 
 const useAudioLevel = ({
-  smoothing = 0.8,
-  minDecibels = -90,
+  smoothing = 0.5,
+  minDecibels = -70,
   maxDecibels = -10,
 }: UseAudioLevelOptions = {}) => {
   const [audioLevel, setAudioLevel] = useState(0);
@@ -19,16 +19,32 @@ const useAudioLevel = ({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
 
   const startCapturing = useCallback(async () => {
+    if (isCapturing) return;
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      });
+      
+      console.log('Microphone access granted');
       streamRef.current = stream;
       setHasPermission(true);
 
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioContextClass();
+      
+      // Resume if suspended (required in some browsers)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+      
       audioContextRef.current = audioContext;
 
       const analyser = audioContext.createAnalyser();
@@ -42,25 +58,23 @@ const useAudioLevel = ({
       source.connect(analyser);
 
       const bufferLength = analyser.frequencyBinCount;
-      dataArrayRef.current = new Uint8Array(bufferLength);
+      const dataArray = new Uint8Array(bufferLength);
 
       setIsCapturing(true);
+      console.log('Audio capture started');
 
       const updateLevel = () => {
-        const analyser = analyserRef.current;
-        const arr = dataArrayRef.current;
-        if (!analyser || !arr) return;
+        if (!analyserRef.current) return;
 
-        (analyser as any).getByteFrequencyData(arr);
+        analyserRef.current.getByteFrequencyData(dataArray);
         
-        // Calculate average level
+        // Calculate RMS (root mean square) for better voice detection
         let sum = 0;
-        const len = arr.length;
-        for (let i = 0; i < len; i++) {
-          sum += arr[i];
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i] * dataArray[i];
         }
-        const average = sum / len;
-        const normalizedLevel = average / 255; // Normalize to 0-1
+        const rms = Math.sqrt(sum / bufferLength);
+        const normalizedLevel = Math.min(1, rms / 128); // Normalize to 0-1
         
         setAudioLevel(normalizedLevel);
         animationFrameRef.current = requestAnimationFrame(updateLevel);
@@ -70,27 +84,32 @@ const useAudioLevel = ({
     } catch (error) {
       console.error('Failed to capture audio:', error);
       setHasPermission(false);
+      setIsCapturing(false);
     }
-  }, [smoothing, minDecibels, maxDecibels]);
+  }, [isCapturing, smoothing, minDecibels, maxDecibels]);
 
   const stopCapturing = useCallback(() => {
+    console.log('Stopping audio capture...');
+    
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
 
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Audio track stopped');
+      });
       streamRef.current = null;
     }
 
-    if (audioContextRef.current) {
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
 
     analyserRef.current = null;
-    dataArrayRef.current = null;
     
     setIsCapturing(false);
     setAudioLevel(0);
