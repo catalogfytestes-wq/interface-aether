@@ -1,96 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
-
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-
-    --radius: 0.5rem;
-
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Core HUD Colors - HSL format */
+    --background: 220 20% 4%;
+    --foreground: 185 100% 50%;
+    
+    --card: 220 30% 8%;
+    --card-foreground: 185 100% 50%;
+    
+    --popover: 220 30% 6%;
+    --popover-foreground: 185 100% 50%;
+    
+    /* Primary - Cyan Neon */
+    --primary: 185 100% 50%;
+    --primary-foreground: 220 20% 4%;
+    
+    /* Secondary - Deep Blue */
+    --secondary: 235 100% 50%;
+    --secondary-foreground: 185 100% 90%;
+    
+    /* Accent - Bright Cyan Glow */
+    --accent: 185 100% 60%;
+    --accent-foreground: 220 20% 4%;
+    
+    /* Alert - Red */
+    --destructive: 0 100% 58%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Muted elements */
+    --muted: 220 20% 15%;
+    --muted-foreground: 185 50% 40%;
+    
+    --border: 185 100% 30%;
+    --input: 220 20% 15%;
+    --ring: 185 100% 50%;
+    
+    --radius: 0.25rem;
+    
+    /* Custom HUD tokens */
+    --hud-cyan: 185 100% 50%;
+    --hud-blue: 235 100% 50%;
+    --hud-red: 0 100% 58%;
+    --hud-orange: 25 100% 55%;
+    --hud-glow: 185 100% 50%;
+    
+    /* Glass effect */
+    --glass-bg: 220 30% 8% / 0.3;
+    --glass-border: 185 100% 50% / 0.2;
+    
+    /* Sidebar */
+    --sidebar-background: 220 30% 6% / 0.8;
+    --sidebar-foreground: 185 100% 50%;
+    --sidebar-primary: 185 100% 50%;
+    --sidebar-primary-foreground: 220 20% 4%;
+    --sidebar-accent: 235 100% 50%;
+    --sidebar-accent-foreground: 185 100% 90%;
+    --sidebar-border: 185 100% 30% / 0.3;
+    --sidebar-ring: 185 100% 50%;
   }
 }
 
@@ -98,8 +69,185 @@ All colors MUST be HSL.
   * {
     @apply border-border;
   }
-
+  
+  html {
+    font-family: 'Orbitron', sans-serif;
+  }
+  
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "liga" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  /* HUD Glass Panel */
+  .hud-glass {
+    @apply backdrop-blur-xl border border-primary/20;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--glass-bg)),
+      hsl(220 30% 6% / 0.1)
+    );
+    box-shadow: 
+      0 0 30px hsl(var(--hud-cyan) / 0.1),
+      inset 0 0 30px hsl(var(--hud-cyan) / 0.05);
+  }
+  
+  /* Neon text glow */
+  .text-glow {
+    text-shadow: 
+      0 0 10px hsl(var(--hud-cyan)),
+      0 0 20px hsl(var(--hud-cyan) / 0.8),
+      0 0 40px hsl(var(--hud-cyan) / 0.6);
+  }
+  
+  .text-glow-red {
+    text-shadow: 
+      0 0 10px hsl(var(--hud-red)),
+      0 0 20px hsl(var(--hud-red) / 0.8),
+      0 0 40px hsl(var(--hud-red) / 0.6);
+  }
+  
+  /* Orb glow effects */
+  .orb-glow {
+    box-shadow: 
+      0 0 60px hsl(var(--hud-cyan) / 0.6),
+      0 0 120px hsl(var(--hud-cyan) / 0.4),
+      0 0 180px hsl(var(--hud-cyan) / 0.2),
+      inset 0 0 60px hsl(var(--hud-cyan) / 0.3);
+  }
+  
+  .orb-glow-active {
+    box-shadow: 
+      0 0 80px hsl(var(--hud-red) / 0.8),
+      0 0 160px hsl(var(--hud-orange) / 0.5),
+      0 0 240px hsl(var(--hud-red) / 0.3),
+      inset 0 0 80px hsl(var(--hud-orange) / 0.4);
+  }
+  
+  /* Holographic border effect */
+  .holo-border {
+    position: relative;
+  }
+  
+  .holo-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--hud-cyan)),
+      hsl(var(--hud-blue)),
+      hsl(var(--hud-cyan) / 0.3)
+    );
+    -webkit-mask: 
+      linear-gradient(#fff 0 0) content-box, 
+      linear-gradient(#fff 0 0);
+    mask: 
+      linear-gradient(#fff 0 0) content-box, 
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+  
+  /* Scanline effect */
+  .scanlines::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      hsl(var(--hud-cyan) / 0.03) 2px,
+      hsl(var(--hud-cyan) / 0.03) 4px
+    );
+    pointer-events: none;
+  }
+  
+  /* Terminal text style */
+  .terminal-text {
+    font-family: 'JetBrains Mono', monospace;
+    @apply text-sm tracking-wider;
+  }
+  
+  /* HUD button */
+  .hud-button {
+    @apply relative px-4 py-2 uppercase tracking-widest text-xs font-medium;
+    @apply text-primary hover:text-primary-foreground;
+    @apply border border-primary/30 hover:border-primary;
+    @apply backdrop-blur-sm transition-all duration-300;
+    background: hsl(var(--hud-cyan) / 0.05);
+  }
+  
+  .hud-button:hover {
+    background: hsl(var(--hud-cyan) / 0.2);
+    box-shadow: 
+      0 0 20px hsl(var(--hud-cyan) / 0.4),
+      inset 0 0 20px hsl(var(--hud-cyan) / 0.1);
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-spin-slow {
+    animation: spin 8s linear infinite;
+  }
+  
+  .animate-spin-medium {
+    animation: spin 3s linear infinite;
+  }
+  
+  .animate-spin-fast {
+    animation: spin 0.5s linear infinite;
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  .animate-breathe {
+    animation: breathe 4s ease-in-out infinite;
+  }
+  
+  @keyframes breathe {
+    0%, 100% {
+      opacity: 0.6;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+  }
+  
+  @keyframes glitch {
+    0%, 100% {
+      transform: translate(0);
+      filter: hue-rotate(0deg);
+    }
+    20% {
+      transform: translate(-2px, 2px);
+      filter: hue-rotate(90deg);
+    }
+    40% {
+      transform: translate(2px, -2px);
+      filter: hue-rotate(180deg);
+    }
+    60% {
+      transform: translate(-1px, -1px);
+      filter: hue-rotate(270deg);
+    }
+    80% {
+      transform: translate(1px, 1px);
+      filter: hue-rotate(360deg);
+    }
+  }
+  
+  .animate-glitch {
+    animation: glitch 0.3s ease-in-out infinite;
   }
 }
