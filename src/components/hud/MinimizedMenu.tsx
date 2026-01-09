@@ -29,11 +29,12 @@ interface MinimizedMenuProps {
   isVoiceActive?: boolean;
   onVoiceToggle?: () => void;
   onWidgetCommandRef?: MutableRefObject<(widget: string | null) => void>;
+  transparentMode?: boolean;
 }
 
 type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagnostics' | 'notifications' | 'network' | 'battery' | null;
 
-const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef }: MinimizedMenuProps) => {
+const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef, transparentMode = false }: MinimizedMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeWidget, setActiveWidget] = useState<WidgetType>(null);
 
@@ -165,7 +166,9 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
         className={`absolute -top-16 left-0 w-12 h-12 rounded-full border flex items-center justify-center transition-all ${
           isVoiceActive 
             ? 'border-green-500/50 bg-green-500/20 text-green-400' 
-            : 'border-white/20 bg-black/50 text-white/70 hover:text-white hover:border-white/40'
+            : transparentMode
+              ? 'border-white/30 bg-white/10 text-white/80 hover:text-white hover:border-white/50 hover:bg-white/20'
+              : 'border-white/20 bg-black/50 text-white/70 hover:text-white hover:border-white/40'
         }`}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
@@ -181,7 +184,11 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
       <motion.button
         onClick={handleToggle}
         onMouseEnter={() => onPlaySound?.('hover')}
-        className="w-12 h-12 rounded-full border border-white/20 bg-black/50 backdrop-blur-sm flex items-center justify-center text-white/70 hover:text-white hover:border-white/40 transition-all"
+        className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all ${
+          transparentMode
+            ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/80 hover:text-white hover:border-white/50 hover:bg-white/20'
+            : 'border-white/20 bg-black/50 backdrop-blur-sm text-white/70 hover:text-white hover:border-white/40'
+        }`}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
       >
@@ -209,8 +216,12 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                 onMouseEnter={() => onPlaySound?.('hover')}
                 className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
                   activeWidget === item.id
-                    ? 'border-white/60 bg-white/10 text-white'
-                    : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
+                    ? transparentMode 
+                      ? 'border-white/60 bg-white/20 backdrop-blur-md text-white'
+                      : 'border-white/60 bg-white/10 text-white'
+                    : transparentMode
+                      ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/70 hover:text-white hover:border-white/50'
+                      : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
                 }`}
                 whileHover={{ scale: 1.05, x: 5 }}
                 whileTap={{ scale: 0.95 }}
@@ -233,7 +244,11 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
             animate={{ opacity: 1, scale: 1, x: 0 }}
             exit={{ opacity: 0, scale: 0.9, x: -20 }}
             transition={{ duration: 0.3 }}
-            className="absolute left-56 top-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md border border-white/10 rounded-lg p-4 min-w-[280px]"
+            className={`absolute left-56 top-1/2 -translate-y-1/2 backdrop-blur-md border rounded-lg p-4 min-w-[280px] ${
+              transparentMode 
+                ? 'bg-white/10 border-white/20' 
+                : 'bg-black/80 border-white/10'
+            }`}
           >
             <button
               onClick={() => setActiveWidget(null)}
