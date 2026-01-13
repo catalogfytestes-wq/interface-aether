@@ -5,6 +5,7 @@ import ParticleSphere from './ParticleSphere';
 import MinimizedMenu from './MinimizedMenu';
 import WindowControls from './WindowControls';
 import SystemLogs from './SystemLogs';
+import MiniParticleSphere from './MiniParticleSphere';
 import useSoundEffects from '@/hooks/useSoundEffects';
 import useVoiceRecognition from '@/hooks/useVoiceRecognition';
 import useAudioLevel from '@/hooks/useAudioLevel';
@@ -24,6 +25,7 @@ const HUDOverlay = ({
   const [systemMode, setSystemMode] = useState<SystemMode>('idle');
   const [logsOpen, setLogsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isMiniMode, setIsMiniMode] = useState(false);
   const { playSound, toggleSound } = useSoundEffects();
   const { audioLevel, isCapturing, startCapturing, stopCapturing } = useAudioLevel();
   const playSoundRef = useRef(playSound);
@@ -35,10 +37,29 @@ const HUDOverlay = ({
   // Voice command callbacks
   const onWidgetCommand = useRef<(widget: string | null) => void>(() => {});
 
+  // Handle wake word detection
+  const handleWakeWord = useCallback(() => {
+    console.log('JARVIS wake word detected!');
+    playSoundRef.current('activate');
+    toast('🎤 JARVIS ativado! Ouvindo comandos...', {
+      description: 'Diga seu comando agora.',
+    });
+    // Expand from mini mode and start listening
+    setIsMiniMode(false);
+  }, []);
+
   // Handle voice commands
   const handleFinalTranscript = useCallback((transcript: string) => {
     const lower = transcript.toLowerCase().trim();
     console.log('Final transcript:', lower);
+    
+    // Modo mini
+    if (lower.includes('modo mini') || lower.includes('minimizar jarvis') || lower.includes('dormir')) {
+      playSoundRef.current('click');
+      setIsMiniMode(true);
+      toast('💤 Modo mini ativado. Diga "JARVIS" para despertar.');
+      return;
+    }
     
     // Abrir widgets
     if (lower.includes('abrir música') || lower.includes('abrir musica') || lower.includes('tocar música') || lower.includes('tocar musica')) {
@@ -125,12 +146,34 @@ const HUDOverlay = ({
     }
   }, [toggleSound]);
 
-  const { isListening, transcript, isSupported, toggleListening } = useVoiceRecognition({
+  const { 
+    isListening, 
+    isWakeWordMode,
+    transcript, 
+    isSupported, 
+    toggleListening,
+    startWakeWordMode,
+    stopWakeWordMode,
+    startListening,
+  } = useVoiceRecognition({
     onTranscript: (text) => {
       console.log('Transcript:', text);
     },
     onFinalTranscript: handleFinalTranscript,
+    onWakeWord: handleWakeWord,
+    wakeWord: 'jarvis',
   });
+
+  // Start wake word mode when in mini mode
+  useEffect(() => {
+    if (isMiniMode && !isWakeWordMode) {
+      startWakeWordMode();
+    } else if (!isMiniMode && isWakeWordMode) {
+      stopWakeWordMode();
+      // Start main listening when coming out of mini mode
+      startListening();
+    }
+  }, [isMiniMode, isWakeWordMode, startWakeWordMode, stopWakeWordMode, startListening]);
 
   // Update system mode based on state
   useEffect(() => {
@@ -217,6 +260,29 @@ const HUDOverlay = ({
     playSound('activate');
     toast(`🎨 Modo: ${nextMode}`);
   };
+
+  // Handle entering mini mode
+  const handleEnterMiniMode = () => {
+    playSound('click');
+    setIsMiniMode(true);
+    toast('💤 Modo mini ativado. Diga "JARVIS" para despertar.');
+  };
+
+  // Handle exiting mini mode
+  const handleExitMiniMode = () => {
+    playSound('activate');
+    setIsMiniMode(false);
+    toast('🎤 JARVIS ativado!');
+  };
+
+  // Mini mode - small blue particle sphere in corner
+  if (isMiniMode) {
+    return (
+      <AnimatePresence>
+        <MiniParticleSphere onClick={handleExitMiniMode} />
+      </AnimatePresence>
+    );
+  }
 
   if (isMinimized) {
     return (
@@ -357,6 +423,19 @@ const HUDOverlay = ({
 
       {/* Bottom Controls */}
       <div className="absolute bottom-6 right-6 flex items-center gap-4">
+        {/* Mini Mode Button */}
+        <motion.button
+          onClick={handleEnterMiniMode}
+          className="flex items-center gap-2 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <div className="w-3 h-3 rounded-full bg-cyan-400/50" />
+          <span className="text-[10px] font-mono tracking-wider uppercase">
+            MINI
+          </span>
+        </motion.button>
+
         {/* Mode Demo Button */}
         <motion.button
           onClick={handleModeDemo}
