@@ -44,22 +44,8 @@ const useVoiceRecognition = ({
   const isRunningRef = useRef(false);
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Auto-stop after silence
-  const startSilenceTimer = useCallback((delay: number = 3000) => {
-    if (silenceTimeoutRef.current) {
-      clearTimeout(silenceTimeoutRef.current);
-    }
-    silenceTimeoutRef.current = setTimeout(() => {
-      if (isListeningRef.current) {
-        console.log('⏹️ Auto-stopping after silence...');
-        setIsListening(false);
-        isListeningRef.current = false;
-        setTranscript('');
-        callbacksRef.current.onListeningChange?.(false);
-      }
-    }, delay);
-  }, []);
+  const lastTranscriptRef = useRef('');
+  const commandExecutedRef = useRef(false);
   
   // Keep callbacks up to date
   useEffect(() => {
@@ -80,6 +66,17 @@ const useVoiceRecognition = ({
     recognition.interimResults = true;
     recognition.lang = language;
 
+    const clearTimers = () => {
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = null;
+      }
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+    };
+
     const safeStart = () => {
       if (isRunningRef.current) return;
       
@@ -88,19 +85,42 @@ const useVoiceRecognition = ({
         isRunningRef.current = true;
       } catch (e) {
         console.log('Recognition already running or failed to start');
+        isRunningRef.current = false;
       }
     };
 
-    const scheduleRestart = (delay: number = 1000) => {
-      if (restartTimeoutRef.current) {
-        clearTimeout(restartTimeoutRef.current);
-      }
+    const scheduleRestart = (delay: number = 500) => {
+      clearTimers();
       restartTimeoutRef.current = setTimeout(() => {
         if (alwaysListenRef.current) {
           console.log('Restarting wake word detection...');
           safeStart();
         }
       }, delay);
+    };
+
+    const executeCommandAndStop = () => {
+      if (isListeningRef.current && lastTranscriptRef.current && !commandExecutedRef.current) {
+        console.log('⚡ Executing command:', lastTranscriptRef.current);
+        commandExecutedRef.current = true;
+        callbacksRef.current.onFinalTranscript?.(lastTranscriptRef.current);
+      }
+      
+      // Stop listening mode
+      console.log('⏹️ Auto-stopping after silence...');
+      setIsListening(false);
+      isListeningRef.current = false;
+      setTranscript('');
+      lastTranscriptRef.current = '';
+      commandExecutedRef.current = false;
+      callbacksRef.current.onListeningChange?.(false);
+    };
+
+    const startSilenceTimer = (delay: number = 2500) => {
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
+      silenceTimeoutRef.current = setTimeout(executeCommandAndStop, delay);
     };
 
     recognition.onstart = () => {
@@ -116,7 +136,7 @@ const useVoiceRecognition = ({
       
       // Auto-restart with delay
       if (alwaysListenRef.current) {
-        scheduleRestart(1000);
+        scheduleRestart(300);
       }
     };
 
@@ -136,14 +156,28 @@ const useVoiceRecognition = ({
       const currentTranscript = finalTranscript || interimTranscript;
       const lowerTranscript = currentTranscript.toLowerCase().trim();
       
-      console.log('Heard:', lowerTranscript);
+      if (lowerTranscript) {
+        console.log('🎧 Heard:', lowerTranscript);
+      }
       
-      // Check for wake word - multiple variations including Portuguese pronunciation
+      // Check for wake word - extensive variations including greetings
       const wakeWordVariations = [
-        'jarvis', 'jarves', 'jarvi', 'jervis', 'jarvs',
-        'djarvis', 'djarves', 'diarvis', 'diárvis', 'djárvis',
-        'charvis', 'charves', 'jarvo', 'jarbis', 'jarvez'
+        // Basic variations
+        'jarvis', 'jarves', 'jarvi', 'jervis', 'jarvs', 'jarvo', 'jarbis', 'jarvez',
+        // Portuguese pronunciation
+        'djarvis', 'djarves', 'diarvis', 'diárvis', 'djárvis', 'djarvi',
+        'charvis', 'charves', 'xarvis', 'xarves',
+        'giarvis', 'giarves', 'giárvis',
+        // With greetings
+        'oi jarvis', 'olá jarvis', 'ola jarvis', 'hey jarvis', 'ei jarvis', 'e aí jarvis',
+        'oi djarvis', 'olá djarvis', 'hey djarvis',
+        'bom dia jarvis', 'boa tarde jarvis', 'boa noite jarvis',
+        // Commands starting with jarvis
+        'jarvis abrir', 'jarvis abre', 'jarvis mostra', 'jarvis fecha',
+        // Phonetic mishears
+        'jarvice', 'jarviz', 'djarviz', 'charviz', 'gervais', 'jerves'
       ];
+      
       const hasWakeWord = wakeWordVariations.some(v => lowerTranscript.includes(v));
       
       if (hasWakeWord && !isListeningRef.current) {
@@ -151,26 +185,40 @@ const useVoiceRecognition = ({
         callbacksRef.current.onWakeWord?.();
         setIsListening(true);
         isListeningRef.current = true;
+        commandExecutedRef.current = false;
+        lastTranscriptRef.current = '';
         callbacksRef.current.onListeningChange?.(true);
         
+        // Check if there's already a command in the same phrase
+        const commandPart = lowerTranscript.replace(/.*jarv\w*/i, '').trim();
+        if (commandPart.length > 3) {
+          lastTranscriptRef.current = commandPart;
+          setTranscript(commandPart);
+          callbacksRef.current.onTranscript?.(commandPart);
+        }
+        
         // Start silence timer for auto-stop
-        startSilenceTimer();
+        startSilenceTimer(3000);
         return;
       }
       
       // If in active listening mode, process commands
-      if (isListeningRef.current) {
+      if (isListeningRef.current && currentTranscript) {
+        lastTranscriptRef.current = currentTranscript;
         setTranscript(currentTranscript);
         callbacksRef.current.onTranscript?.(currentTranscript);
 
         // Reset silence timer on any speech
-        startSilenceTimer();
+        startSilenceTimer(2500);
 
         if (finalTranscript) {
+          console.log('📝 Final transcript:', finalTranscript);
+          // Execute command immediately on final transcript
+          commandExecutedRef.current = true;
           callbacksRef.current.onFinalTranscript?.(finalTranscript);
           
-          // After final transcript, start shorter timer to auto-stop
-          startSilenceTimer(2000);
+          // After command executed, short timer to close
+          startSilenceTimer(1500);
         }
       }
     };
@@ -186,7 +234,7 @@ const useVoiceRecognition = ({
       
       // Restart with appropriate delay based on error type
       if (alwaysListenRef.current) {
-        const delay = error === 'no-speech' ? 500 : 2000;
+        const delay = error === 'no-speech' ? 200 : 1000;
         scheduleRestart(delay);
       }
     };
@@ -204,12 +252,7 @@ const useVoiceRecognition = ({
     }
 
     return () => {
-      if (restartTimeoutRef.current) {
-        clearTimeout(restartTimeoutRef.current);
-      }
-      if (silenceTimeoutRef.current) {
-        clearTimeout(silenceTimeoutRef.current);
-      }
+      clearTimers();
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -217,7 +260,7 @@ const useVoiceRecognition = ({
       }
       isRunningRef.current = false;
     };
-  }, [language, alwaysListenForWakeWord, wakeWord, startSilenceTimer]);
+  }, [language, alwaysListenForWakeWord, wakeWord]);
 
   const startListening = useCallback(async () => {
     if (!recognitionRef.current) {
@@ -229,6 +272,8 @@ const useVoiceRecognition = ({
       await navigator.mediaDevices.getUserMedia({ audio: true });
       setIsListening(true);
       isListeningRef.current = true;
+      commandExecutedRef.current = false;
+      lastTranscriptRef.current = '';
       callbacksRef.current.onListeningChange?.(true);
       
       // Make sure recognition is running
@@ -254,6 +299,8 @@ const useVoiceRecognition = ({
     setIsListening(false);
     isListeningRef.current = false;
     setTranscript('');
+    lastTranscriptRef.current = '';
+    commandExecutedRef.current = false;
     callbacksRef.current.onListeningChange?.(false);
     console.log('Stopped active listening, still detecting wake word');
   }, []);
