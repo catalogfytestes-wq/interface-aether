@@ -177,16 +177,18 @@ const HUDOverlay = ({
     }
   }, [isListening, isProcessing]);
 
-  // Sync audio capture - always capture when wake word listening OR active listening
+  // Sync audio capture - capture only when actively listening OR in mini mode (for pulsing)
   useEffect(() => {
-    if ((isWakeWordListening || isListening) && !isCapturing) {
+    const shouldCapture = isListening || isMiniMode;
+
+    if (shouldCapture && !isCapturing) {
       console.log('Starting audio capture...');
       startCapturing();
-    } else if (!isWakeWordListening && !isListening && isCapturing) {
+    } else if (!shouldCapture && isCapturing) {
       console.log('Stopping audio capture...');
       stopCapturing();
     }
-  }, [isListening, isWakeWordListening, isCapturing, startCapturing, stopCapturing]);
+  }, [isListening, isMiniMode, isCapturing, startCapturing, stopCapturing]);
 
   const handleToggleSound = () => {
     const newState = !soundEnabled;
