@@ -41,6 +41,8 @@ const useVoiceRecognition = ({
   const wakeWordRef = useRef(wakeWord);
   const alwaysListenRef = useRef(alwaysListenForWakeWord);
   const isListeningRef = useRef(false);
+  const isRunningRef = useRef(false);
+  const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Keep callbacks up to date
   useEffect(() => {
@@ -61,25 +63,43 @@ const useVoiceRecognition = ({
     recognition.interimResults = true;
     recognition.lang = language;
 
+    const safeStart = () => {
+      if (isRunningRef.current) return;
+      
+      try {
+        recognition.start();
+        isRunningRef.current = true;
+      } catch (e) {
+        console.log('Recognition already running or failed to start');
+      }
+    };
+
+    const scheduleRestart = (delay: number = 1000) => {
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+      }
+      restartTimeoutRef.current = setTimeout(() => {
+        if (alwaysListenRef.current) {
+          console.log('Restarting wake word detection...');
+          safeStart();
+        }
+      }, delay);
+    };
+
     recognition.onstart = () => {
-      console.log('Speech recognition started');
+      console.log('Speech recognition started - listening for "JARVIS"');
+      isRunningRef.current = true;
       setIsWakeWordListening(true);
     };
 
     recognition.onend = () => {
       console.log('Speech recognition ended');
+      isRunningRef.current = false;
       setIsWakeWordListening(false);
       
-      // Auto-restart if always listening and not in active mode
-      if (alwaysListenRef.current && !isListeningRef.current) {
-        setTimeout(() => {
-          try {
-            recognition.start();
-            console.log('Auto-restarting wake word detection...');
-          } catch (e) {
-            console.log('Could not restart recognition');
-          }
-        }, 100);
+      // Auto-restart with delay
+      if (alwaysListenRef.current) {
+        scheduleRestart(1000);
       }
     };
 
@@ -99,9 +119,15 @@ const useVoiceRecognition = ({
       const currentTranscript = finalTranscript || interimTranscript;
       const lowerTranscript = currentTranscript.toLowerCase().trim();
       
-      // Always check for wake word
-      if (lowerTranscript.includes(wakeWordRef.current.toLowerCase()) && !isListeningRef.current) {
-        console.log('Wake word detected:', wakeWordRef.current);
+      console.log('Heard:', lowerTranscript);
+      
+      // Check for wake word - multiple variations
+      const wakeWordLower = wakeWordRef.current.toLowerCase();
+      const wakeWordVariations = [wakeWordLower, 'jarves', 'jarvi', 'jervis', 'jarvs'];
+      const hasWakeWord = wakeWordVariations.some(v => lowerTranscript.includes(v));
+      
+      if (hasWakeWord && !isListeningRef.current) {
+        console.log('🎤 Wake word detected! Activating JARVIS...');
         callbacksRef.current.onWakeWord?.();
         setIsListening(true);
         isListeningRef.current = true;
@@ -121,16 +147,18 @@ const useVoiceRecognition = ({
     };
 
     recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        // Try to restart on error
-        if (alwaysListenRef.current) {
-          setTimeout(() => {
-            try {
-              recognition.start();
-            } catch (e) {}
-          }, 500);
-        }
+      const error = event.error;
+      isRunningRef.current = false;
+      
+      // Only log non-trivial errors
+      if (error !== 'no-speech' && error !== 'aborted') {
+        console.error('Speech recognition error:', error);
+      }
+      
+      // Restart with appropriate delay based on error type
+      if (alwaysListenRef.current) {
+        const delay = error === 'no-speech' ? 500 : 2000;
+        scheduleRestart(delay);
       }
     };
 
@@ -139,23 +167,23 @@ const useVoiceRecognition = ({
     // Auto-start if always listening
     if (alwaysListenForWakeWord) {
       navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
-        try {
-          recognition.start();
-          console.log('Started always-on wake word detection for:', wakeWord);
-        } catch (e) {
-          console.error('Failed to start wake word detection:', e);
-        }
+        console.log('🎙️ Microfone ativado - Diga "JARVIS" para começar');
+        safeStart();
       }).catch(e => {
         console.error('Microphone permission denied:', e);
       });
     }
 
     return () => {
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+      }
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
         } catch (e) {}
       }
+      isRunningRef.current = false;
     };
   }, [language, alwaysListenForWakeWord, wakeWord]);
 
@@ -172,10 +200,13 @@ const useVoiceRecognition = ({
       callbacksRef.current.onListeningChange?.(true);
       
       // Make sure recognition is running
-      try {
-        recognitionRef.current.start();
-      } catch (e) {
-        // Already running, that's fine
+      if (!isRunningRef.current) {
+        try {
+          recognitionRef.current.start();
+          isRunningRef.current = true;
+        } catch (e) {
+          // Already running, that's fine
+        }
       }
       
       console.log('Started active listening...');
