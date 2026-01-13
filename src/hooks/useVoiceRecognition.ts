@@ -43,6 +43,23 @@ const useVoiceRecognition = ({
   const isListeningRef = useRef(false);
   const isRunningRef = useRef(false);
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Auto-stop after silence
+  const startSilenceTimer = useCallback((delay: number = 3000) => {
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+    }
+    silenceTimeoutRef.current = setTimeout(() => {
+      if (isListeningRef.current) {
+        console.log('⏹️ Auto-stopping after silence...');
+        setIsListening(false);
+        isListeningRef.current = false;
+        setTranscript('');
+        callbacksRef.current.onListeningChange?.(false);
+      }
+    }, delay);
+  }, []);
   
   // Keep callbacks up to date
   useEffect(() => {
@@ -121,9 +138,12 @@ const useVoiceRecognition = ({
       
       console.log('Heard:', lowerTranscript);
       
-      // Check for wake word - multiple variations
-      const wakeWordLower = wakeWordRef.current.toLowerCase();
-      const wakeWordVariations = [wakeWordLower, 'jarves', 'jarvi', 'jervis', 'jarvs'];
+      // Check for wake word - multiple variations including Portuguese pronunciation
+      const wakeWordVariations = [
+        'jarvis', 'jarves', 'jarvi', 'jervis', 'jarvs',
+        'djarvis', 'djarves', 'diarvis', 'diárvis', 'djárvis',
+        'charvis', 'charves', 'jarvo', 'jarbis', 'jarvez'
+      ];
       const hasWakeWord = wakeWordVariations.some(v => lowerTranscript.includes(v));
       
       if (hasWakeWord && !isListeningRef.current) {
@@ -132,6 +152,9 @@ const useVoiceRecognition = ({
         setIsListening(true);
         isListeningRef.current = true;
         callbacksRef.current.onListeningChange?.(true);
+        
+        // Start silence timer for auto-stop
+        startSilenceTimer();
         return;
       }
       
@@ -140,8 +163,14 @@ const useVoiceRecognition = ({
         setTranscript(currentTranscript);
         callbacksRef.current.onTranscript?.(currentTranscript);
 
+        // Reset silence timer on any speech
+        startSilenceTimer();
+
         if (finalTranscript) {
           callbacksRef.current.onFinalTranscript?.(finalTranscript);
+          
+          // After final transcript, start shorter timer to auto-stop
+          startSilenceTimer(2000);
         }
       }
     };
@@ -178,6 +207,9 @@ const useVoiceRecognition = ({
       if (restartTimeoutRef.current) {
         clearTimeout(restartTimeoutRef.current);
       }
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -185,7 +217,7 @@ const useVoiceRecognition = ({
       }
       isRunningRef.current = false;
     };
-  }, [language, alwaysListenForWakeWord, wakeWord]);
+  }, [language, alwaysListenForWakeWord, wakeWord, startSilenceTimer]);
 
   const startListening = useCallback(async () => {
     if (!recognitionRef.current) {
@@ -216,6 +248,9 @@ const useVoiceRecognition = ({
   }, []);
 
   const stopListening = useCallback(() => {
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+    }
     setIsListening(false);
     isListeningRef.current = false;
     setTranscript('');
