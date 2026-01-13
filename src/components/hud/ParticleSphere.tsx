@@ -13,15 +13,19 @@ interface Particle {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
+  hue: number;
 }
+
+type SystemMode = 'idle' | 'listening' | 'processing' | 'success' | 'error';
 
 interface ParticleSphereProps {
   isListening?: boolean;
   audioLevel?: number;
   transparentMode?: boolean;
+  systemMode?: SystemMode;
 }
 
-const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode = false }: ParticleSphereProps) => {
+const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode = false, systemMode = 'idle' }: ParticleSphereProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const angleRef = useRef(0);
@@ -30,6 +34,24 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
   const isListeningRef = useRef(isListening);
   const audioLevelRef = useRef(audioLevel);
   const transparentModeRef = useRef(transparentMode);
+  const systemModeRef = useRef(systemMode);
+  const colorTransitionRef = useRef(0);
+
+  // Color schemes for different modes
+  const getModeColors = (mode: SystemMode): { primary: number; secondary: number; saturation: number } => {
+    switch (mode) {
+      case 'listening':
+        return { primary: 180, secondary: 220, saturation: 80 }; // Cyan/Blue
+      case 'processing':
+        return { primary: 280, secondary: 320, saturation: 70 }; // Purple/Magenta
+      case 'success':
+        return { primary: 120, secondary: 160, saturation: 70 }; // Green
+      case 'error':
+        return { primary: 0, secondary: 30, saturation: 80 }; // Red/Orange
+      default:
+        return { primary: 0, secondary: 0, saturation: 0 }; // White/Gray (no hue)
+    }
+  };
 
   // Update refs when props change
   useEffect(() => {
@@ -43,6 +65,10 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
   useEffect(() => {
     transparentModeRef.current = transparentMode;
   }, [transparentMode]);
+
+  useEffect(() => {
+    systemModeRef.current = systemMode;
+  }, [systemMode]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     mouseRef.current.x = e.clientX;
@@ -94,6 +120,7 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
           velocityX: 0,
           velocityY: 0,
           velocityZ: 0,
+          hue: Math.random() * 360,
         };
       });
     };
@@ -209,7 +236,13 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
         };
       }).sort((a, b) => a.screenZ - b.screenZ);
 
-      sortedParticles.forEach(p => {
+      // Get current mode colors with smooth transition
+      const currentMode = systemModeRef.current;
+      const modeColors = getModeColors(currentMode);
+      const targetColorMix = currentMode === 'idle' ? 0 : 1;
+      colorTransitionRef.current += (targetColorMix - colorTransitionRef.current) * 0.02;
+
+      sortedParticles.forEach((p, index) => {
         const depth = (p.screenZ + baseRadius) / (baseRadius * 2);
         let opacity = p.opacity * (0.3 + depth * 0.7);
         let size = p.size * (0.5 + depth * 0.5);
@@ -220,6 +253,27 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
           size = size * (1 + pulseRef.current * 0.8);
         }
         
+        // Calculate particle color based on mode
+        let fillColor: string;
+        const colorMix = colorTransitionRef.current;
+        
+        if (colorMix > 0.01) {
+          // Add variation based on particle position and time
+          const hueVariation = Math.sin(Date.now() * 0.001 + index * 0.1) * 20;
+          const particleHue = modeColors.primary + (p.hue % (modeColors.secondary - modeColors.primary)) + hueVariation;
+          const saturation = modeColors.saturation * colorMix;
+          const lightness = 50 + (opacity * 30);
+          
+          // Blend between white and colored based on colorMix
+          const r = Math.round(255 * (1 - colorMix * 0.3));
+          const g = Math.round(255 * (1 - colorMix * 0.2));
+          const b = Math.round(255 * (1 - colorMix * 0.1));
+          
+          fillColor = `hsla(${particleHue}, ${saturation}%, ${lightness}%, ${opacity})`;
+        } else {
+          fillColor = `rgba(255, 255, 255, ${opacity})`;
+        }
+        
         ctx.beginPath();
         ctx.arc(
           centerX + p.screenX,
@@ -228,7 +282,7 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
           0,
           Math.PI * 2
         );
-        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+        ctx.fillStyle = fillColor;
         ctx.fill();
       });
 
