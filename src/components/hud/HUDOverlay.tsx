@@ -3,10 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Volume2, VolumeX, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
 import ParticleSphere from './ParticleSphere';
 import MinimizedMenu from './MinimizedMenu';
+import WindowControls from './WindowControls';
+import SystemLogs from './SystemLogs';
 import useSoundEffects from '@/hooks/useSoundEffects';
 import useVoiceRecognition from '@/hooks/useVoiceRecognition';
 import useAudioLevel from '@/hooks/useAudioLevel';
 import { toast } from 'sonner';
+
+type SystemMode = 'idle' | 'listening' | 'processing' | 'success' | 'error';
 
 interface HUDOverlayProps {
   isProcessing?: boolean;
@@ -17,6 +21,9 @@ const HUDOverlay = ({
 }: HUDOverlayProps) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [transparentMode, setTransparentMode] = useState(false);
+  const [systemMode, setSystemMode] = useState<SystemMode>('idle');
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const { playSound, toggleSound } = useSoundEffects();
   const { audioLevel, isCapturing, startCapturing, stopCapturing } = useAudioLevel();
   const playSoundRef = useRef(playSound);
@@ -125,6 +132,17 @@ const HUDOverlay = ({
     onFinalTranscript: handleFinalTranscript,
   });
 
+  // Update system mode based on state
+  useEffect(() => {
+    if (isListening) {
+      setSystemMode('listening');
+    } else if (isProcessing) {
+      setSystemMode('processing');
+    } else {
+      setSystemMode('idle');
+    }
+  }, [isListening, isProcessing]);
+
   // Sync audio capture with voice listening
   useEffect(() => {
     if (isListening && !isCapturing) {
@@ -172,10 +190,78 @@ const HUDOverlay = ({
     toast(newMode ? '🖥️ Modo widget ativado' : '🖥️ Modo normal');
   };
 
+  const handleClose = () => {
+    playSound('click');
+    toast('👋 Fechando interface...');
+    // In a real desktop app, this would close the window
+    setIsMinimized(true);
+  };
+
+  const handleMinimize = () => {
+    playSound('click');
+    setIsMinimized(!isMinimized);
+    toast(isMinimized ? '🔼 Interface restaurada' : '🔽 Interface minimizada');
+  };
+
+  const handleLogsToggle = () => {
+    playSound('click');
+    setLogsOpen(!logsOpen);
+  };
+
+  // Demo: Cycle through modes for testing colored particles
+  const handleModeDemo = () => {
+    const modes: SystemMode[] = ['idle', 'listening', 'processing', 'success', 'error'];
+    const currentIndex = modes.indexOf(systemMode);
+    const nextMode = modes[(currentIndex + 1) % modes.length];
+    setSystemMode(nextMode);
+    playSound('activate');
+    toast(`🎨 Modo: ${nextMode}`);
+  };
+
+  if (isMinimized) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="fixed bottom-8 right-8 z-50"
+      >
+        <motion.button
+          onClick={() => setIsMinimized(false)}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/20 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white transition-colors"
+        >
+          <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />
+        </motion.button>
+      </motion.div>
+    );
+  }
+
   return (
     <div className={`fixed inset-0 overflow-hidden transition-colors duration-500 ${transparentMode ? 'bg-transparent' : 'bg-black'}`}>
+      {/* Window Controls */}
+      <WindowControls
+        onClose={handleClose}
+        onMinimize={handleMinimize}
+        onLogsToggle={handleLogsToggle}
+        logsOpen={logsOpen}
+        transparentMode={transparentMode}
+      />
+
+      {/* System Logs Panel */}
+      <SystemLogs
+        isOpen={logsOpen}
+        onClose={() => setLogsOpen(false)}
+        transparentMode={transparentMode}
+      />
+
       {/* Particle Sphere Background */}
-      <ParticleSphere isListening={isListening} audioLevel={audioLevel} transparentMode={transparentMode} />
+      <ParticleSphere 
+        isListening={isListening} 
+        audioLevel={audioLevel} 
+        transparentMode={transparentMode}
+        systemMode={systemMode}
+      />
 
       {/* Minimized Menu */}
       <MinimizedMenu 
@@ -271,6 +357,27 @@ const HUDOverlay = ({
 
       {/* Bottom Controls */}
       <div className="absolute bottom-6 right-6 flex items-center gap-4">
+        {/* Mode Demo Button */}
+        <motion.button
+          onClick={handleModeDemo}
+          className="flex items-center gap-2 text-white/40 hover:text-white/70 transition-colors"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <div 
+            className="w-3 h-3 rounded-full"
+            style={{
+              background: systemMode === 'idle' ? 'white' :
+                systemMode === 'listening' ? 'cyan' :
+                systemMode === 'processing' ? 'magenta' :
+                systemMode === 'success' ? 'lime' : 'red'
+            }}
+          />
+          <span className="text-[10px] font-mono tracking-wider uppercase">
+            {systemMode}
+          </span>
+        </motion.button>
+
         {/* Transparent Mode Toggle */}
         <motion.button
           onClick={handleToggleTransparent}
