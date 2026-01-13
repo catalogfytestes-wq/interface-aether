@@ -154,10 +154,14 @@ const useVoiceRecognition = ({
       }
 
       const currentTranscript = finalTranscript || interimTranscript;
-      const lowerTranscript = currentTranscript.toLowerCase().trim();
+      const normalizedTranscript = (currentTranscript || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
       
-      if (lowerTranscript) {
-        console.log('🎧 Heard:', lowerTranscript);
+      if (normalizedTranscript) {
+        console.log('🎧 Heard:', normalizedTranscript);
       }
       
       // Check for wake word - extensive variations including greetings
@@ -165,12 +169,12 @@ const useVoiceRecognition = ({
         // Basic variations
         'jarvis', 'jarves', 'jarvi', 'jervis', 'jarvs', 'jarvo', 'jarbis', 'jarvez',
         // Portuguese pronunciation
-        'djarvis', 'djarves', 'diarvis', 'diárvis', 'djárvis', 'djarvi',
+        'djarvis', 'djarves', 'diarvis', 'dj arvis', 'dj-arvis', 'djarvi',
         'charvis', 'charves', 'xarvis', 'xarves',
-        'giarvis', 'giarves', 'giárvis',
+        'giarvis', 'giarves',
         // With greetings
-        'oi jarvis', 'olá jarvis', 'ola jarvis', 'hey jarvis', 'ei jarvis', 'e aí jarvis',
-        'oi djarvis', 'olá djarvis', 'hey djarvis',
+        'oi jarvis', 'ola jarvis', 'olá jarvis', 'hey jarvis', 'ei jarvis', 'e ai jarvis',
+        'oi djarvis', 'ola djarvis', 'hey djarvis',
         'bom dia jarvis', 'boa tarde jarvis', 'boa noite jarvis',
         // Commands starting with jarvis
         'jarvis abrir', 'jarvis abre', 'jarvis mostra', 'jarvis fecha',
@@ -178,7 +182,7 @@ const useVoiceRecognition = ({
         'jarvice', 'jarviz', 'djarviz', 'charviz', 'gervais', 'jerves'
       ];
       
-      const hasWakeWord = wakeWordVariations.some(v => lowerTranscript.includes(v));
+      const hasWakeWord = wakeWordVariations.some(v => normalizedTranscript.includes(v));
       
       if (hasWakeWord && !isListeningRef.current) {
         console.log('🎤 Wake word detected! Activating JARVIS...');
@@ -190,7 +194,7 @@ const useVoiceRecognition = ({
         callbacksRef.current.onListeningChange?.(true);
         
         // Check if there's already a command in the same phrase
-        const commandPart = lowerTranscript.replace(/.*jarv\w*/i, '').trim();
+        const commandPart = normalizedTranscript.replace(/.*(?:jarv\w*|djarv\w*|diarv\w*|charv\w*|xarv\w*|giarv\w*)/i, '').trim();
         if (commandPart.length > 3) {
           lastTranscriptRef.current = commandPart;
           setTranscript(commandPart);
