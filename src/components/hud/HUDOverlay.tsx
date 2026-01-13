@@ -44,9 +44,11 @@ const HUDOverlay = ({
     toast('🎤 JARVIS ativado! Ouvindo comandos...', {
       description: 'Diga seu comando agora.',
     });
-    // Expand from mini mode and start listening
-    setIsMiniMode(false);
-  }, []);
+    // Expand from mini mode if in it
+    if (isMiniMode) {
+      setIsMiniMode(false);
+    }
+  }, [isMiniMode]);
 
   // Handle voice commands
   const handleFinalTranscript = useCallback((transcript: string) => {
@@ -148,13 +150,12 @@ const HUDOverlay = ({
 
   const { 
     isListening, 
-    isWakeWordMode,
+    isWakeWordListening,
     transcript, 
     isSupported, 
     toggleListening,
-    startWakeWordMode,
-    stopWakeWordMode,
     startListening,
+    stopListening,
   } = useVoiceRecognition({
     onTranscript: (text) => {
       console.log('Transcript:', text);
@@ -162,18 +163,8 @@ const HUDOverlay = ({
     onFinalTranscript: handleFinalTranscript,
     onWakeWord: handleWakeWord,
     wakeWord: 'jarvis',
+    alwaysListenForWakeWord: true,
   });
-
-  // Start wake word mode when in mini mode
-  useEffect(() => {
-    if (isMiniMode && !isWakeWordMode) {
-      startWakeWordMode();
-    } else if (!isMiniMode && isWakeWordMode) {
-      stopWakeWordMode();
-      // Start main listening when coming out of mini mode
-      startListening();
-    }
-  }, [isMiniMode, isWakeWordMode, startWakeWordMode, stopWakeWordMode, startListening]);
 
   // Update system mode based on state
   useEffect(() => {
@@ -186,16 +177,16 @@ const HUDOverlay = ({
     }
   }, [isListening, isProcessing]);
 
-  // Sync audio capture with voice listening
+  // Sync audio capture - always capture when wake word listening OR active listening
   useEffect(() => {
-    if (isListening && !isCapturing) {
+    if ((isWakeWordListening || isListening) && !isCapturing) {
       console.log('Starting audio capture...');
       startCapturing();
-    } else if (!isListening && isCapturing) {
+    } else if (!isWakeWordListening && !isListening && isCapturing) {
       console.log('Stopping audio capture...');
       stopCapturing();
     }
-  }, [isListening, isCapturing, startCapturing, stopCapturing]);
+  }, [isListening, isWakeWordListening, isCapturing, startCapturing, stopCapturing]);
 
   const handleToggleSound = () => {
     const newState = !soundEnabled;
@@ -272,14 +263,15 @@ const HUDOverlay = ({
   const handleExitMiniMode = () => {
     playSound('activate');
     setIsMiniMode(false);
+    startListening();
     toast('🎤 JARVIS ativado!');
   };
 
-  // Mini mode - small blue particle sphere in corner
+  // Mini mode - small blue particle sphere in corner with audio reactivity
   if (isMiniMode) {
     return (
       <AnimatePresence>
-        <MiniParticleSphere onClick={handleExitMiniMode} />
+        <MiniParticleSphere onClick={handleExitMiniMode} audioLevel={audioLevel} />
       </AnimatePresence>
     );
   }

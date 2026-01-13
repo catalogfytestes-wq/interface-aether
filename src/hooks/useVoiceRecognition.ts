@@ -7,6 +7,7 @@ interface UseVoiceRecognitionOptions {
   onWakeWord?: () => void;
   wakeWord?: string;
   language?: string;
+  alwaysListenForWakeWord?: boolean;
 }
 
 interface SpeechRecognitionType {
@@ -29,23 +30,26 @@ const useVoiceRecognition = ({
   onWakeWord,
   wakeWord = 'jarvis',
   language = 'pt-BR',
+  alwaysListenForWakeWord = true,
 }: UseVoiceRecognitionOptions = {}) => {
   const [isListening, setIsListening] = useState(false);
-  const [isWakeWordMode, setIsWakeWordMode] = useState(false);
+  const [isWakeWordListening, setIsWakeWordListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
-  const wakeWordRecognitionRef = useRef<SpeechRecognitionType | null>(null);
   const callbacksRef = useRef({ onTranscript, onFinalTranscript, onListeningChange, onWakeWord });
   const wakeWordRef = useRef(wakeWord);
+  const alwaysListenRef = useRef(alwaysListenForWakeWord);
+  const isListeningRef = useRef(false);
   
   // Keep callbacks up to date
   useEffect(() => {
     callbacksRef.current = { onTranscript, onFinalTranscript, onListeningChange, onWakeWord };
     wakeWordRef.current = wakeWord;
-  }, [onTranscript, onFinalTranscript, onListeningChange, onWakeWord, wakeWord]);
+    alwaysListenRef.current = alwaysListenForWakeWord;
+  }, [onTranscript, onFinalTranscript, onListeningChange, onWakeWord, wakeWord, alwaysListenForWakeWord]);
 
-  // Initialize main recognition
+  // Initialize recognition
   useEffect(() => {
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognitionClass);
@@ -59,14 +63,24 @@ const useVoiceRecognition = ({
 
     recognition.onstart = () => {
       console.log('Speech recognition started');
-      setIsListening(true);
-      callbacksRef.current.onListeningChange?.(true);
+      setIsWakeWordListening(true);
     };
 
     recognition.onend = () => {
       console.log('Speech recognition ended');
-      setIsListening(false);
-      callbacksRef.current.onListeningChange?.(false);
+      setIsWakeWordListening(false);
+      
+      // Auto-restart if always listening and not in active mode
+      if (alwaysListenRef.current && !isListeningRef.current) {
+        setTimeout(() => {
+          try {
+            recognition.start();
+            console.log('Auto-restarting wake word detection...');
+          } catch (e) {
+            console.log('Could not restart recognition');
+          }
+        }, 100);
+      }
     };
 
     recognition.onresult = (event: any) => {
@@ -83,93 +97,67 @@ const useVoiceRecognition = ({
       }
 
       const currentTranscript = finalTranscript || interimTranscript;
-      setTranscript(currentTranscript);
-      callbacksRef.current.onTranscript?.(currentTranscript);
+      const lowerTranscript = currentTranscript.toLowerCase().trim();
+      
+      // Always check for wake word
+      if (lowerTranscript.includes(wakeWordRef.current.toLowerCase()) && !isListeningRef.current) {
+        console.log('Wake word detected:', wakeWordRef.current);
+        callbacksRef.current.onWakeWord?.();
+        setIsListening(true);
+        isListeningRef.current = true;
+        callbacksRef.current.onListeningChange?.(true);
+        return;
+      }
+      
+      // If in active listening mode, process commands
+      if (isListeningRef.current) {
+        setTranscript(currentTranscript);
+        callbacksRef.current.onTranscript?.(currentTranscript);
 
-      if (finalTranscript) {
-        callbacksRef.current.onFinalTranscript?.(finalTranscript);
+        if (finalTranscript) {
+          callbacksRef.current.onFinalTranscript?.(finalTranscript);
+        }
       }
     };
 
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setIsListening(false);
-        callbacksRef.current.onListeningChange?.(false);
+        // Try to restart on error
+        if (alwaysListenRef.current) {
+          setTimeout(() => {
+            try {
+              recognition.start();
+            } catch (e) {}
+          }, 500);
+        }
       }
     };
 
     recognitionRef.current = recognition;
 
+    // Auto-start if always listening
+    if (alwaysListenForWakeWord) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
+        try {
+          recognition.start();
+          console.log('Started always-on wake word detection for:', wakeWord);
+        } catch (e) {
+          console.error('Failed to start wake word detection:', e);
+        }
+      }).catch(e => {
+        console.error('Microphone permission denied:', e);
+      });
+    }
+
     return () => {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
-        } catch (e) {
-          // Ignore errors on cleanup
-        }
-      }
-    };
-  }, [language]);
-
-  // Initialize wake word recognition (separate instance for background listening)
-  useEffect(() => {
-    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) return;
-
-    const wakeRecognition = new SpeechRecognitionClass() as SpeechRecognitionType;
-    wakeRecognition.continuous = true;
-    wakeRecognition.interimResults = true;
-    wakeRecognition.lang = language;
-
-    wakeRecognition.onresult = (event: any) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const transcript = result[0].transcript.toLowerCase().trim();
-        
-        // Check for wake word
-        if (transcript.includes(wakeWordRef.current.toLowerCase())) {
-          console.log('Wake word detected:', wakeWordRef.current);
-          callbacksRef.current.onWakeWord?.();
-          
-          // Stop wake word mode and start main listening
-          try {
-            wakeRecognition.stop();
-          } catch (e) {}
-          setIsWakeWordMode(false);
-        }
-      }
-    };
-
-    wakeRecognition.onend = () => {
-      // Restart if still in wake word mode
-      if (isWakeWordMode) {
-        setTimeout(() => {
-          try {
-            wakeRecognition.start();
-          } catch (e) {
-            console.log('Failed to restart wake word detection');
-          }
-        }, 100);
-      }
-    };
-
-    wakeRecognition.onerror = (event: any) => {
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.error('Wake word recognition error:', event.error);
-      }
-    };
-
-    wakeWordRecognitionRef.current = wakeRecognition;
-
-    return () => {
-      if (wakeWordRecognitionRef.current) {
-        try {
-          wakeWordRecognitionRef.current.abort();
         } catch (e) {}
       }
     };
-  }, [language, isWakeWordMode]);
+  }, [language, alwaysListenForWakeWord, wakeWord]);
 
   const startListening = useCallback(async () => {
     if (!recognitionRef.current) {
@@ -178,32 +166,30 @@ const useVoiceRecognition = ({
     }
     
     try {
-      // Stop wake word mode if active
-      if (wakeWordRecognitionRef.current) {
-        try {
-          wakeWordRecognitionRef.current.stop();
-        } catch (e) {}
-      }
-      setIsWakeWordMode(false);
-      
-      // Request microphone permission first
       await navigator.mediaDevices.getUserMedia({ audio: true });
-      recognitionRef.current.start();
-      console.log('Started listening...');
+      setIsListening(true);
+      isListeningRef.current = true;
+      callbacksRef.current.onListeningChange?.(true);
+      
+      // Make sure recognition is running
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        // Already running, that's fine
+      }
+      
+      console.log('Started active listening...');
     } catch (error) {
       console.error('Failed to start recognition:', error);
     }
   }, []);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-        console.log('Stopped listening');
-      } catch (error) {
-        console.error('Failed to stop recognition:', error);
-      }
-    }
+    setIsListening(false);
+    isListeningRef.current = false;
+    setTranscript('');
+    callbacksRef.current.onListeningChange?.(false);
+    console.log('Stopped active listening, still detecting wake word');
   }, []);
 
   const toggleListening = useCallback(() => {
@@ -214,44 +200,14 @@ const useVoiceRecognition = ({
     }
   }, [isListening, startListening, stopListening]);
 
-  const startWakeWordMode = useCallback(async () => {
-    if (!wakeWordRecognitionRef.current) {
-      console.error('Wake word recognition not initialized');
-      return;
-    }
-    
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      setIsWakeWordMode(true);
-      wakeWordRecognitionRef.current.start();
-      console.log('Started wake word detection for:', wakeWord);
-    } catch (error) {
-      console.error('Failed to start wake word detection:', error);
-    }
-  }, [wakeWord]);
-
-  const stopWakeWordMode = useCallback(() => {
-    if (wakeWordRecognitionRef.current) {
-      try {
-        wakeWordRecognitionRef.current.stop();
-        setIsWakeWordMode(false);
-        console.log('Stopped wake word detection');
-      } catch (error) {
-        console.error('Failed to stop wake word detection:', error);
-      }
-    }
-  }, []);
-
   return {
     isListening,
-    isWakeWordMode,
+    isWakeWordListening,
     transcript,
     isSupported,
     startListening,
     stopListening,
     toggleListening,
-    startWakeWordMode,
-    stopWakeWordMode,
   };
 };
 
