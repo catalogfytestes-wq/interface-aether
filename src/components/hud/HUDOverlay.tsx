@@ -253,19 +253,19 @@ const HUDOverlay = ({
   };
 
   // Handle entering mini mode
-  const handleEnterMiniMode = () => {
+  const handleEnterMiniMode = useCallback(() => {
     playSound('click');
     setIsMiniMode(true);
     toast('💤 Modo mini ativado. Diga "JARVIS" para despertar.');
-  };
+  }, [playSound]);
 
   // Handle exiting mini mode
-  const handleExitMiniMode = () => {
+  const handleExitMiniMode = useCallback(() => {
     playSound('activate');
     setIsMiniMode(false);
     startListening();
     toast('🎤 JARVIS ativado!');
-  };
+  }, [playSound, startListening]);
 
   // Mini mode - small blue particle sphere in corner with audio reactivity
   if (isMiniMode) {
