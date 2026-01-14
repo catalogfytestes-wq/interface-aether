@@ -152,7 +152,10 @@ const HUDOverlay = ({
     isListening, 
     isWakeWordListening,
     transcript, 
-    isSupported, 
+    isSupported,
+    micPermission,
+    lastError,
+    armWakeWord,
     toggleListening,
     startListening,
     stopListening,
@@ -177,9 +180,9 @@ const HUDOverlay = ({
     }
   }, [isListening, isProcessing]);
 
-  // Sync audio capture - capture only when actively listening OR in mini mode (for pulsing)
+  // Sync audio capture - capture when wake word is armed OR actively listening OR in mini mode (for pulsing)
   useEffect(() => {
-    const shouldCapture = isListening || isMiniMode;
+    const shouldCapture = isWakeWordListening || isListening || isMiniMode;
 
     if (shouldCapture && !isCapturing) {
       console.log('Starting audio capture...');
@@ -188,7 +191,7 @@ const HUDOverlay = ({
       console.log('Stopping audio capture...');
       stopCapturing();
     }
-  }, [isListening, isMiniMode, isCapturing, startCapturing, stopCapturing]);
+  }, [isWakeWordListening, isListening, isMiniMode, isCapturing, startCapturing, stopCapturing]);
 
   const handleToggleSound = () => {
     const newState = !soundEnabled;
@@ -305,13 +308,23 @@ const HUDOverlay = ({
         animate={{ opacity: 1 }}
         className="fixed top-4 left-1/2 -translate-x-1/2 z-50"
       >
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border ${
-          isListening 
-            ? 'bg-cyan-500/20 border-cyan-400/50' 
-            : isWakeWordListening 
-              ? 'bg-green-500/10 border-green-400/30' 
-              : 'bg-red-500/10 border-red-400/30'
-        }`}>
+        <button
+          type="button"
+          onClick={() => {
+            // user gesture to unlock mic/recognition if needed
+            armWakeWord();
+            // also start active listening if user wants
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-colors ${
+            isListening 
+              ? 'bg-cyan-500/20 border-cyan-400/50' 
+              : isWakeWordListening 
+                ? 'bg-green-500/10 border-green-400/30' 
+                : 'bg-red-500/10 border-red-400/30'
+          }`}
+          aria-label="Ativar microfone e escuta do Jarvis"
+          title={lastError || (micPermission === 'denied' ? 'Clique para permitir o microfone' : 'Clique para rearmar')}
+        >
           <motion.div
             className={`w-2 h-2 rounded-full ${
               isListening 
@@ -337,9 +350,17 @@ const HUDOverlay = ({
               ? '🎤 OUVINDO COMANDO...' 
               : isWakeWordListening 
                 ? '👂 ESCUTANDO: "JARVIS"' 
-                : '🔇 MICROFONE INATIVO'}
+                : '🔇 CLIQUE PARA ATIVAR MICROFONE'}
           </span>
-        </div>
+        </button>
+
+        {lastError && (
+          <div className="mt-2 text-center">
+            <span className="text-[10px] font-mono text-white/50">
+              {lastError}
+            </span>
+          </div>
+        )}
       </motion.div>
 
       {/* Window Controls */}
