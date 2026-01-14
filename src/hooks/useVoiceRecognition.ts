@@ -164,6 +164,15 @@ const useVoiceRecognition = ({
     };
 
     recognition.onresult = (event: any) => {
+      // Debug: some browsers fire empty events; log minimal info
+      try {
+        if (event?.results?.length) {
+          const latest = event.results[event.results.length - 1];
+          const latestText = latest?.[0]?.transcript;
+          if (latestText) console.log('🧠 SR raw:', latestText);
+        }
+      } catch {}
+
       let finalTranscript = '';
       let interimTranscript = '';
 
@@ -182,11 +191,11 @@ const useVoiceRecognition = ({
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .trim();
-      
+
       if (normalizedTranscript) {
         console.log('🎧 Heard:', normalizedTranscript);
       }
-      
+
       // Check for wake word - extensive variations including greetings
       const wakeWordVariations = [
         // Basic variations
@@ -204,9 +213,9 @@ const useVoiceRecognition = ({
         // Phonetic mishears
         'jarvice', 'jarviz', 'djarviz', 'charviz', 'gervais', 'jerves'
       ];
-      
+
       const hasWakeWord = wakeWordVariations.some(v => normalizedTranscript.includes(v));
-      
+
       if (hasWakeWord && !isListeningRef.current) {
         console.log('🎤 Wake word detected! Activating JARVIS...');
         callbacksRef.current.onWakeWord?.();
@@ -215,7 +224,7 @@ const useVoiceRecognition = ({
         commandExecutedRef.current = false;
         lastTranscriptRef.current = '';
         callbacksRef.current.onListeningChange?.(true);
-        
+
         // Check if there's already a command in the same phrase
         const commandPart = normalizedTranscript.replace(/.*(?:jarv\w*|djarv\w*|diarv\w*|charv\w*|xarv\w*|giarv\w*)/i, '').trim();
         if (commandPart.length > 3) {
@@ -223,12 +232,12 @@ const useVoiceRecognition = ({
           setTranscript(commandPart);
           callbacksRef.current.onTranscript?.(commandPart);
         }
-        
+
         // Start silence timer for auto-stop
         startSilenceTimer(3000);
         return;
       }
-      
+
       // If in active listening mode, process commands
       if (isListeningRef.current && currentTranscript) {
         lastTranscriptRef.current = currentTranscript;
@@ -243,7 +252,7 @@ const useVoiceRecognition = ({
           // Execute command immediately on final transcript
           commandExecutedRef.current = true;
           callbacksRef.current.onFinalTranscript?.(finalTranscript);
-          
+
           // After command executed, short timer to close
           startSilenceTimer(1500);
         }
