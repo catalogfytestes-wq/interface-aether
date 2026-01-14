@@ -157,9 +157,9 @@ const Auth = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md relative z-10"
       >
-        <div className="hud-glass rounded-lg p-8 holo-border">
+        <div className="hud-glass rounded-lg p-8 holo-border relative z-10">
           {/* Header */}
           <div className="text-center mb-8">
             <motion.div
@@ -304,14 +304,15 @@ const Auth = () => {
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => {
                   setIsLogin(!isLogin);
                   setErrors({});
                 }}
-                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text"
+                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text cursor-pointer"
               >
                 {isLogin ? 'Não tem conta? ' : 'Já tem conta? '}
-                <span className="text-primary underline">
+                <span className="text-primary underline cursor-pointer">
                   {isLogin ? 'Criar conta' : 'Fazer login'}
                 </span>
               </button>
