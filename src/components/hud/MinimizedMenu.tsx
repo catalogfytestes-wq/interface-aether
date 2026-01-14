@@ -1,4 +1,5 @@
 import { useState, useEffect, MutableRefObject } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Menu, 
@@ -15,8 +16,13 @@ import {
   Bell,
   Cpu,
   Wifi,
-  Battery
+  Battery,
+  User,
+  CreditCard,
+  LogIn,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import FuturisticClock from './FuturisticClock';
 import WeatherWidget from './WeatherWidget';
 import CalendarWidget from './CalendarWidget';
@@ -37,6 +43,8 @@ type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagno
 const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef, transparentMode = false }: MinimizedMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeWidget, setActiveWidget] = useState<WidgetType>(null);
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   // Register voice command handler
   useEffect(() => {
@@ -78,6 +86,24 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
   const handleVoiceClick = () => {
     onPlaySound?.('activate');
     onVoiceToggle?.();
+  };
+
+  const handleUserAction = async (action: 'profile' | 'plans' | 'login' | 'logout') => {
+    onPlaySound?.('click');
+    switch (action) {
+      case 'profile':
+        navigate('/profile');
+        break;
+      case 'plans':
+        navigate('/plans');
+        break;
+      case 'login':
+        navigate('/auth');
+        break;
+      case 'logout':
+        await signOut();
+        break;
+    }
   };
 
   const renderWidget = () => {
@@ -232,6 +258,84 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                 </span>
               </motion.button>
             ))}
+            
+            {/* Divider */}
+            <div className={`my-2 border-t ${transparentMode ? 'border-white/20' : 'border-white/10'}`} />
+            
+            {/* User actions */}
+            {user ? (
+              <>
+                <motion.button
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ delay: menuItems.length * 0.03 }}
+                  onClick={() => handleUserAction('profile')}
+                  onMouseEnter={() => onPlaySound?.('hover')}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
+                    transparentMode
+                      ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/70 hover:text-white hover:border-white/50'
+                      : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
+                  }`}
+                  whileHover={{ scale: 1.05, x: 5 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <User size={16} />
+                  <span className="text-xs font-light tracking-wider whitespace-nowrap">Perfil</span>
+                </motion.button>
+                <motion.button
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ delay: (menuItems.length + 1) * 0.03 }}
+                  onClick={() => handleUserAction('plans')}
+                  onMouseEnter={() => onPlaySound?.('hover')}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
+                    transparentMode
+                      ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/70 hover:text-white hover:border-white/50'
+                      : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
+                  }`}
+                  whileHover={{ scale: 1.05, x: 5 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <CreditCard size={16} />
+                  <span className="text-xs font-light tracking-wider whitespace-nowrap">Planos</span>
+                </motion.button>
+                <motion.button
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ delay: (menuItems.length + 2) * 0.03 }}
+                  onClick={() => handleUserAction('logout')}
+                  onMouseEnter={() => onPlaySound?.('hover')}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all border-red-500/30 text-red-400/70 hover:text-red-400 hover:border-red-500/50 ${
+                    transparentMode ? 'bg-white/10 backdrop-blur-md' : 'bg-black/50'
+                  }`}
+                  whileHover={{ scale: 1.05, x: 5 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <LogOut size={16} />
+                  <span className="text-xs font-light tracking-wider whitespace-nowrap">Sair</span>
+                </motion.button>
+              </>
+            ) : (
+              <motion.button
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ delay: menuItems.length * 0.03 }}
+                onClick={() => handleUserAction('login')}
+                onMouseEnter={() => onPlaySound?.('hover')}
+                className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all border-primary/30 text-primary/70 hover:text-primary hover:border-primary/50 ${
+                  transparentMode ? 'bg-white/10 backdrop-blur-md' : 'bg-black/50'
+                }`}
+                whileHover={{ scale: 1.05, x: 5 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <LogIn size={16} />
+                <span className="text-xs font-light tracking-wider whitespace-nowrap">Entrar</span>
+              </motion.button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
