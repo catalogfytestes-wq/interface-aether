@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,6 +11,7 @@ const passwordSchema = z.string().min(6, 'Senha deve ter no mínimo 6 caracteres
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -18,7 +19,7 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   
-  const { signIn, signUp, user, loading } = useAuth();
+  const { signIn, signUp, user, loading, requestPasswordReset } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -47,6 +48,35 @@ const Auth = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isForgotPassword) {
+      const emailResult = emailSchema.safeParse(email);
+      if (!emailResult.success) {
+        setErrors({ email: emailResult.error.errors[0].message });
+        return;
+      }
+      
+      setIsLoading(true);
+      try {
+        const { error } = await requestPasswordReset(email);
+        if (error) {
+          toast({
+            title: 'Erro',
+            description: error.message,
+            variant: 'destructive'
+          });
+        } else {
+          toast({
+            title: 'Email enviado!',
+            description: 'Verifique sua caixa de entrada para redefinir sua senha'
+          });
+          setIsForgotPassword(false);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
     
     if (!validateForm()) return;
     
@@ -141,16 +171,20 @@ const Auth = () => {
               <User className="w-8 h-8 text-primary" />
             </motion.div>
             <h1 className="text-2xl font-bold text-primary text-glow tracking-wider">
-              {isLogin ? 'ENTRAR' : 'CRIAR CONTA'}
+              {isForgotPassword ? 'RECUPERAR SENHA' : isLogin ? 'ENTRAR' : 'CRIAR CONTA'}
             </h1>
             <p className="text-muted-foreground text-sm mt-2 terminal-text">
-              {isLogin ? 'Acesse sua conta JARVIS' : 'Registre-se no sistema'}
+              {isForgotPassword 
+                ? 'Digite seu email para receber o link' 
+                : isLogin 
+                  ? 'Acesse sua conta JARVIS' 
+                  : 'Registre-se no sistema'}
             </p>
           </div>
           
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {!isLogin && (
+            {!isLogin && !isForgotPassword && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -194,34 +228,49 @@ const Auth = () => {
               )}
             </div>
             
-            <div>
-              <label className="block text-xs uppercase tracking-widest text-muted-foreground mb-2">
-                Senha
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setErrors({ ...errors, password: undefined });
-                  }}
-                  className={`w-full bg-background/50 border ${errors.password ? 'border-destructive' : 'border-primary/30'} rounded px-4 py-3 pl-11 pr-11 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors terminal-text`}
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
+            {!isForgotPassword && (
+              <div>
+                <label className="block text-xs uppercase tracking-widest text-muted-foreground mb-2">
+                  Senha
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setErrors({ ...errors, password: undefined });
+                    }}
+                    className={`w-full bg-background/50 border ${errors.password ? 'border-destructive' : 'border-primary/30'} rounded px-4 py-3 pl-11 pr-11 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors terminal-text`}
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="text-destructive text-xs mt-1 terminal-text">{errors.password}</p>
+                )}
+                
+                {isLogin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsForgotPassword(true);
+                      setErrors({});
+                    }}
+                    className="text-xs text-primary/70 hover:text-primary mt-2 terminal-text"
+                  >
+                    Esqueceu sua senha?
+                  </button>
+                )}
               </div>
-              {errors.password && (
-                <p className="text-destructive text-xs mt-1 terminal-text">{errors.password}</p>
-              )}
-            </div>
+            )}
             
             <motion.button
               type="submit"
@@ -234,7 +283,7 @@ const Auth = () => {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  {isLogin ? 'ENTRAR' : 'CADASTRAR'}
+                  {isForgotPassword ? 'ENVIAR LINK' : isLogin ? 'ENTRAR' : 'CADASTRAR'}
                   <ArrowRight className="w-5 h-5" />
                 </>
               )}
@@ -242,19 +291,31 @@ const Auth = () => {
           </form>
           
           {/* Toggle */}
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setErrors({});
-              }}
-              className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text"
-            >
-              {isLogin ? 'Não tem conta? ' : 'Já tem conta? '}
-              <span className="text-primary underline">
-                {isLogin ? 'Criar conta' : 'Fazer login'}
-              </span>
-            </button>
+          <div className="mt-6 text-center space-y-2">
+            {isForgotPassword ? (
+              <button
+                onClick={() => {
+                  setIsForgotPassword(false);
+                  setErrors({});
+                }}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text"
+              >
+                <span className="text-primary underline">Voltar para login</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setErrors({});
+                }}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text"
+              >
+                {isLogin ? 'Não tem conta? ' : 'Já tem conta? '}
+                <span className="text-primary underline">
+                  {isLogin ? 'Criar conta' : 'Fazer login'}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </motion.div>
