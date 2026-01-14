@@ -180,18 +180,20 @@ const HUDOverlay = ({
     }
   }, [isListening, isProcessing]);
 
-  // Sync audio capture - capture when wake word is armed OR actively listening OR in mini mode (for pulsing)
+  // Sync audio capture
+  // IMPORTANT: manter um getUserMedia aberto pode atrapalhar o SpeechRecognition em alguns navegadores.
+  // Então só capturamos áudio para efeitos visuais no Mini Mode.
   useEffect(() => {
-    const shouldCapture = isWakeWordListening || isListening || isMiniMode;
+    const shouldCapture = isMiniMode;
 
     if (shouldCapture && !isCapturing) {
-      console.log('Starting audio capture...');
+      console.log('Starting audio capture (mini mode)...');
       startCapturing();
     } else if (!shouldCapture && isCapturing) {
       console.log('Stopping audio capture...');
       stopCapturing();
     }
-  }, [isWakeWordListening, isListening, isMiniMode, isCapturing, startCapturing, stopCapturing]);
+  }, [isMiniMode, isCapturing, startCapturing, stopCapturing]);
 
   const handleToggleSound = () => {
     const newState = !soundEnabled;
