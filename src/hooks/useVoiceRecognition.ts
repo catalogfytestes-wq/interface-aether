@@ -65,6 +65,9 @@ const useVoiceRecognition = ({
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = language;
+    
+    // Keep recognition running longer
+    (recognition as any).maxAlternatives = 5;
 
     const clearTimers = () => {
       if (restartTimeoutRef.current) {
@@ -78,22 +81,37 @@ const useVoiceRecognition = ({
     };
 
     const safeStart = () => {
-      if (isRunningRef.current) return;
+      if (isRunningRef.current) {
+        console.log('Recognition already running, skipping start');
+        return;
+      }
       
       try {
         recognition.start();
         isRunningRef.current = true;
-      } catch (e) {
-        console.log('Recognition already running or failed to start');
+        console.log('✅ Recognition started successfully');
+      } catch (e: any) {
+        console.log('Start failed:', e.message);
         isRunningRef.current = false;
+        // Try again after a longer delay
+        setTimeout(() => {
+          if (alwaysListenRef.current && !isRunningRef.current) {
+            try {
+              recognition.start();
+              isRunningRef.current = true;
+            } catch (e2) {}
+          }
+        }, 1000);
       }
     };
 
-    const scheduleRestart = (delay: number = 500) => {
-      clearTimers();
+    const scheduleRestart = (delay: number = 100) => {
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+      }
       restartTimeoutRef.current = setTimeout(() => {
-        if (alwaysListenRef.current) {
-          console.log('Restarting wake word detection...');
+        if (alwaysListenRef.current && !isRunningRef.current) {
+          console.log('🔄 Restarting wake word detection...');
           safeStart();
         }
       }, delay);
@@ -124,19 +142,21 @@ const useVoiceRecognition = ({
     };
 
     recognition.onstart = () => {
-      console.log('Speech recognition started - listening for "JARVIS"');
+      console.log('🎙️ Speech recognition ACTIVE - say "JARVIS"');
       isRunningRef.current = true;
       setIsWakeWordListening(true);
     };
 
     recognition.onend = () => {
-      console.log('Speech recognition ended');
+      console.log('Speech recognition ended, isRunning was:', isRunningRef.current);
       isRunningRef.current = false;
-      setIsWakeWordListening(false);
       
-      // Auto-restart with delay
+      // Only restart if we should be listening
       if (alwaysListenRef.current) {
-        scheduleRestart(300);
+        // Use longer delay to prevent rapid restart loops
+        scheduleRestart(500);
+      } else {
+        setIsWakeWordListening(false);
       }
     };
 
@@ -229,17 +249,30 @@ const useVoiceRecognition = ({
 
     recognition.onerror = (event: any) => {
       const error = event.error;
-      isRunningRef.current = false;
       
-      // Only log non-trivial errors
-      if (error !== 'no-speech' && error !== 'aborted') {
-        console.error('Speech recognition error:', error);
+      // no-speech is normal - recognition just didn't hear anything
+      // aborted means we stopped it ourselves
+      if (error === 'no-speech') {
+        // This is fine, just restart to keep listening
+        console.log('👂 No speech detected, continuing to listen...');
+        isRunningRef.current = false;
+        if (alwaysListenRef.current) {
+          scheduleRestart(100);
+        }
+        return;
       }
       
-      // Restart with appropriate delay based on error type
+      if (error === 'aborted') {
+        isRunningRef.current = false;
+        return;
+      }
+      
+      console.error('❌ Speech recognition error:', error);
+      isRunningRef.current = false;
+      
+      // Restart with longer delay for real errors
       if (alwaysListenRef.current) {
-        const delay = error === 'no-speech' ? 200 : 1000;
-        scheduleRestart(delay);
+        scheduleRestart(2000);
       }
     };
 
