@@ -299,6 +299,49 @@ const HUDOverlay = ({
 
   return (
     <div className={`fixed inset-0 overflow-hidden transition-colors duration-500 ${transparentMode ? 'bg-transparent' : 'bg-black'}`}>
+      {/* Wake Word Status Indicator - Always visible */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="fixed top-4 left-1/2 -translate-x-1/2 z-50"
+      >
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border ${
+          isListening 
+            ? 'bg-cyan-500/20 border-cyan-400/50' 
+            : isWakeWordListening 
+              ? 'bg-green-500/10 border-green-400/30' 
+              : 'bg-red-500/10 border-red-400/30'
+        }`}>
+          <motion.div
+            className={`w-2 h-2 rounded-full ${
+              isListening 
+                ? 'bg-cyan-400' 
+                : isWakeWordListening 
+                  ? 'bg-green-400' 
+                  : 'bg-red-400'
+            }`}
+            animate={{ 
+              scale: isWakeWordListening || isListening ? [1, 1.3, 1] : 1,
+              opacity: isWakeWordListening || isListening ? [1, 0.5, 1] : 0.5 
+            }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+          />
+          <span className={`text-xs font-mono tracking-wider ${
+            isListening 
+              ? 'text-cyan-400' 
+              : isWakeWordListening 
+                ? 'text-green-400/80' 
+                : 'text-red-400/60'
+          }`}>
+            {isListening 
+              ? '🎤 OUVINDO COMANDO...' 
+              : isWakeWordListening 
+                ? '👂 ESCUTANDO: "JARVIS"' 
+                : '🔇 MICROFONE INATIVO'}
+          </span>
+        </div>
+      </motion.div>
+
       {/* Window Controls */}
       <WindowControls
         onClose={handleClose}
