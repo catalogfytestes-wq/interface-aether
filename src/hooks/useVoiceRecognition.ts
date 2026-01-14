@@ -36,6 +36,9 @@ const useVoiceRecognition = ({
   const [isWakeWordListening, setIsWakeWordListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isSupported, setIsSupported] = useState(false);
+  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const [lastError, setLastError] = useState<string | null>(null);
+
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const callbacksRef = useRef({ onTranscript, onFinalTranscript, onListeningChange, onWakeWord });
   const wakeWordRef = useRef(wakeWord);
@@ -248,28 +251,35 @@ const useVoiceRecognition = ({
     };
 
     recognition.onerror = (event: any) => {
-      const error = event.error;
-      
+      const error = event.error as string;
+
       // no-speech is normal - recognition just didn't hear anything
-      // aborted means we stopped it ourselves
       if (error === 'no-speech') {
-        // This is fine, just restart to keep listening
         console.log('👂 No speech detected, continuing to listen...');
         isRunningRef.current = false;
-        if (alwaysListenRef.current) {
-          scheduleRestart(100);
-        }
+        if (alwaysListenRef.current) scheduleRestart(250);
         return;
       }
-      
+
       if (error === 'aborted') {
         isRunningRef.current = false;
         return;
       }
-      
+
+      // Common when start() happens without a user gesture / mic blocked
+      if (error === 'not-allowed' || error === 'service-not-allowed') {
+        console.error('❌ Speech recognition not allowed (needs user interaction or mic permission)');
+        setMicPermission('denied');
+        setLastError('O navegador bloqueou o microfone/voz. Clique para ativar.');
+        isRunningRef.current = false;
+        setIsWakeWordListening(false);
+        return;
+      }
+
       console.error('❌ Speech recognition error:', error);
+      setLastError(error);
       isRunningRef.current = false;
-      
+
       // Restart with longer delay for real errors
       if (alwaysListenRef.current) {
         scheduleRestart(2000);
@@ -278,13 +288,18 @@ const useVoiceRecognition = ({
 
     recognitionRef.current = recognition;
 
-    // Auto-start if always listening
+    // Auto-start if always listening (may fail without user gesture in some browsers)
     if (alwaysListenForWakeWord) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
-        console.log('🎙️ Microfone ativado - Diga "JARVIS" para começar');
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        setMicPermission('granted');
+        setLastError(null);
+        stream.getTracks().forEach((t) => t.stop());
+        console.log('🎙️ Microfone permitido - armando escuta do "JARVIS"');
         safeStart();
-      }).catch(e => {
+      }).catch((e) => {
         console.error('Microphone permission denied:', e);
+        setMicPermission('denied');
+        setLastError('Permissão de microfone negada');
       });
     }
 
@@ -304,15 +319,19 @@ const useVoiceRecognition = ({
       console.error('Speech recognition not initialized');
       return;
     }
-    
+
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission('granted');
+      setLastError(null);
+      stream.getTracks().forEach((t) => t.stop());
+
       setIsListening(true);
       isListeningRef.current = true;
       commandExecutedRef.current = false;
       lastTranscriptRef.current = '';
       callbacksRef.current.onListeningChange?.(true);
-      
+
       // Make sure recognition is running
       if (!isRunningRef.current) {
         try {
@@ -322,10 +341,35 @@ const useVoiceRecognition = ({
           // Already running, that's fine
         }
       }
-      
+
       console.log('Started active listening...');
     } catch (error) {
       console.error('Failed to start recognition:', error);
+      setMicPermission('denied');
+      setLastError('Sem permissão de microfone');
+    }
+  }, []);
+
+  const armWakeWord = useCallback(async () => {
+    if (!recognitionRef.current) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission('granted');
+      setLastError(null);
+      stream.getTracks().forEach((t) => t.stop());
+
+      if (!isRunningRef.current) {
+        try {
+          recognitionRef.current.start();
+          isRunningRef.current = true;
+        } catch (e: any) {
+          setLastError(e?.message || 'Falha ao iniciar reconhecimento');
+        }
+      }
+    } catch (e) {
+      setMicPermission('denied');
+      setLastError('Permissão de microfone negada');
     }
   }, []);
 
@@ -355,6 +399,9 @@ const useVoiceRecognition = ({
     isWakeWordListening,
     transcript,
     isSupported,
+    micPermission,
+    lastError,
+    armWakeWord,
     startListening,
     stopListening,
     toggleListening,
