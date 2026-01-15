@@ -48,23 +48,60 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
+    // First, check if user has a manual subscription in the database (without Stripe)
+    const { data: existingSub } = await supabaseAdmin
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    // If there's a manual subscription (no stripe_customer_id but has plan_id and is active)
+    if (existingSub && 
+        existingSub.status === 'active' && 
+        existingSub.plan_id && 
+        !existingSub.stripe_customer_id) {
+      
+      const periodEnd = existingSub.current_period_end ? new Date(existingSub.current_period_end) : null;
+      const isValid = !periodEnd || periodEnd > new Date();
+      
+      if (isValid) {
+        logStep("Found valid manual subscription", { 
+          planId: existingSub.plan_id, 
+          endDate: existingSub.current_period_end 
+        });
+        
+        return new Response(JSON.stringify({
+          subscribed: true,
+          plan_id: existingSub.plan_id,
+          plan_name: existingSub.plan_id,
+          subscription_end: existingSub.current_period_end
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+    }
+
+    // Check Stripe for subscription
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
 
     if (customers.data.length === 0) {
-      logStep("No customer found");
+      logStep("No Stripe customer found");
       
-      // Update database to reflect no subscription
-      await supabaseAdmin
-        .from('subscriptions')
-        .upsert({
-          user_id: user.id,
-          plan_id: null,
-          status: 'inactive',
-          stripe_customer_id: null,
-          stripe_subscription_id: null,
-          current_period_end: null,
-        }, { onConflict: 'user_id' });
+      // Don't update if there's an existing manual subscription
+      if (!existingSub || existingSub.stripe_customer_id) {
+        await supabaseAdmin
+          .from('subscriptions')
+          .upsert({
+            user_id: user.id,
+            plan_id: null,
+            status: 'inactive',
+            stripe_customer_id: null,
+            stripe_subscription_id: null,
+            current_period_end: null,
+          }, { onConflict: 'user_id' });
+      }
 
       return new Response(JSON.stringify({ 
         subscribed: false,
@@ -101,14 +138,14 @@ serve(async (req) => {
       stripePriceId = subscription.items.data[0].price.id;
       planId = productId;
       planName = PLAN_MAP[productId] || "unknown";
-      logStep("Active subscription found", { 
+      logStep("Active Stripe subscription found", { 
         subscriptionId: subscription.id, 
         productId,
         planName,
         endDate: subscriptionEnd 
       });
 
-      // Update database with subscription info
+      // Update database with Stripe subscription info
       await supabaseAdmin
         .from('subscriptions')
         .upsert({
@@ -123,19 +160,21 @@ serve(async (req) => {
         }, { onConflict: 'user_id' });
 
     } else {
-      logStep("No active subscription found");
+      logStep("No active Stripe subscription found");
       
-      // Update database to reflect inactive subscription
-      await supabaseAdmin
-        .from('subscriptions')
-        .upsert({
-          user_id: user.id,
-          plan_id: null,
-          status: 'inactive',
-          stripe_customer_id: customerId,
-          stripe_subscription_id: null,
-          current_period_end: null,
-        }, { onConflict: 'user_id' });
+      // Only update to inactive if there's no manual subscription
+      if (!existingSub || existingSub.stripe_customer_id) {
+        await supabaseAdmin
+          .from('subscriptions')
+          .upsert({
+            user_id: user.id,
+            plan_id: null,
+            status: 'inactive',
+            stripe_customer_id: customerId,
+            stripe_subscription_id: null,
+            current_period_end: null,
+          }, { onConflict: 'user_id' });
+      }
     }
 
     return new Response(JSON.stringify({
