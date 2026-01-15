@@ -291,31 +291,36 @@ const Auth = () => {
           </form>
           
           {/* Toggle */}
-          <div className="mt-6 text-center space-y-2">
+          <div className="mt-6 text-center space-y-2 relative z-20">
             {isForgotPassword ? (
-              <button
+              <div
                 onClick={() => {
                   setIsForgotPassword(false);
                   setErrors({});
                 }}
-                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text"
+                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text cursor-pointer inline-block"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && (setIsForgotPassword(false), setErrors({}))}
               >
                 <span className="text-primary underline">Voltar para login</span>
-              </button>
+              </div>
             ) : (
-              <button
-                type="button"
+              <div
                 onClick={() => {
                   setIsLogin(!isLogin);
                   setErrors({});
                 }}
-                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text cursor-pointer"
+                className="text-sm text-muted-foreground hover:text-primary transition-colors terminal-text cursor-pointer inline-block"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && (setIsLogin(!isLogin), setErrors({}))}
               >
                 {isLogin ? 'Não tem conta? ' : 'Já tem conta? '}
-                <span className="text-primary underline cursor-pointer">
+                <span className="text-primary underline">
                   {isLogin ? 'Criar conta' : 'Fazer login'}
                 </span>
-              </button>
+              </div>
             )}
           </div>
         </div>
