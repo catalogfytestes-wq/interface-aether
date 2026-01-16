@@ -167,10 +167,12 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, x: 300 }}
+        // ALTERAÇÃO 1: Animação vindo da esquerda (negativo)
+        initial={{ opacity: 0, x: -300 }}
         animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 300 }}
-        className={`fixed right-4 top-1/2 -translate-y-1/2 z-50 ${
+        exit={{ opacity: 0, x: -300 }}
+        // ALTERAÇÃO 2: Posição 'left-24' para ficar após a barra lateral
+        className={`fixed left-24 top-1/2 -translate-y-1/2 z-50 ${
           isExpanded ? 'w-[500px] h-[80vh]' : 'w-[380px] h-[500px]'
         } flex flex-col rounded-lg border backdrop-blur-xl transition-all duration-300 ${
           transparentMode
@@ -355,8 +357,4 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
           </div>
         </div>
       </motion.div>
-    </AnimatePresence>
-  );
-};
-
-export default ScreenAgentPanel;
+    </AnimatePresence
