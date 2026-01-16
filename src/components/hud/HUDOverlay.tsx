@@ -63,8 +63,20 @@ const HUDOverlay = ({
       return;
     }
     
+    // Screen Agent / Compartilhar tela
+    if (lower.includes('ver minha tela') || lower.includes('veja minha tela') || lower.includes('compartilhar tela') || 
+        lower.includes('screen agent') || lower.includes('abrir tela') || lower.includes('veja a tela')) {
+      playSoundRef.current('activate');
+      onWidgetCommand.current('screenagent');
+      toast('🖥️ Abrindo Screen Agent...');
+    } else if (lower.includes('parar de ver') || lower.includes('pare de ver') || lower.includes('fechar tela') ||
+               lower.includes('fechar screen') || lower.includes('parar compartilhamento')) {
+      playSoundRef.current('click');
+      onWidgetCommand.current(null);
+      toast('🖥️ Screen Agent fechado');
+    }
     // Abrir widgets
-    if (lower.includes('abrir música') || lower.includes('abrir musica') || lower.includes('tocar música') || lower.includes('tocar musica')) {
+    else if (lower.includes('abrir música') || lower.includes('abrir musica') || lower.includes('tocar música') || lower.includes('tocar musica')) {
       playSoundRef.current('activate');
       onWidgetCommand.current('music');
       toast('🎵 Abrindo player de música...');
