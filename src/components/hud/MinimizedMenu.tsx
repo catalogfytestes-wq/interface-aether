@@ -20,7 +20,8 @@ import {
   User,
   CreditCard,
   LogIn,
-  LogOut
+  LogOut,
+  MonitorPlay
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import FuturisticClock from './FuturisticClock';
@@ -29,6 +30,7 @@ import CalendarWidget from './CalendarWidget';
 import MusicPlayer from './MusicPlayer';
 import RadarWidget from './RadarWidget';
 import SystemDiagnostics from './SystemDiagnostics';
+import ScreenAgentPanel from './ScreenAgentPanel';
 
 interface MinimizedMenuProps {
   onPlaySound?: (type: 'hover' | 'click' | 'activate') => void;
@@ -38,7 +40,7 @@ interface MinimizedMenuProps {
   transparentMode?: boolean;
 }
 
-type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagnostics' | 'notifications' | 'network' | 'battery' | null;
+type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagnostics' | 'notifications' | 'network' | 'battery' | 'screenagent' | null;
 
 const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef, transparentMode = false }: MinimizedMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -61,6 +63,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
   }, [onWidgetCommandRef, isOpen]);
 
   const menuItems = [
+    { id: 'screenagent' as WidgetType, icon: MonitorPlay, label: 'Screen Agent', highlight: true },
     { id: 'clock' as WidgetType, icon: Clock, label: 'Relógio' },
     { id: 'weather' as WidgetType, icon: Cloud, label: 'Clima' },
     { id: 'calendar' as WidgetType, icon: Calendar, label: 'Calendário' },
@@ -107,6 +110,11 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
   };
 
   const renderWidget = () => {
+    // Screen Agent uses a separate panel, not inline widget
+    if (activeWidget === 'screenagent') {
+      return null;
+    }
+    
     switch (activeWidget) {
       case 'clock':
         return <FuturisticClock />;
@@ -245,9 +253,11 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                     ? transparentMode 
                       ? 'border-white/60 bg-white/20 backdrop-blur-md text-white'
                       : 'border-white/60 bg-white/10 text-white'
-                    : transparentMode
-                      ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/70 hover:text-white hover:border-white/50'
-                      : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
+                    : 'highlight' in item && item.highlight
+                      ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:text-cyan-300 hover:border-cyan-500/50'
+                      : transparentMode
+                        ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/70 hover:text-white hover:border-white/50'
+                        : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
                 }`}
                 whileHover={{ scale: 1.05, x: 5 }}
                 whileTap={{ scale: 0.95 }}
@@ -256,6 +266,11 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                 <span className="text-xs font-light tracking-wider whitespace-nowrap">
                   {item.label}
                 </span>
+                {'highlight' in item && item.highlight && (
+                  <span className="px-1.5 py-0.5 rounded text-[8px] bg-cyan-500/20 text-cyan-400 font-medium">
+                    NOVO
+                  </span>
+                )}
               </motion.button>
             ))}
             
@@ -342,7 +357,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
 
       {/* Active Widget Panel */}
       <AnimatePresence>
-        {activeWidget && (
+        {activeWidget && activeWidget !== 'screenagent' && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9, x: -20 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
@@ -366,6 +381,14 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Screen Agent Panel - Separate full panel */}
+      <ScreenAgentPanel
+        isOpen={activeWidget === 'screenagent'}
+        onClose={() => setActiveWidget(null)}
+        transparentMode={transparentMode}
+        onPlaySound={onPlaySound}
+      />
     </div>
   );
 };
