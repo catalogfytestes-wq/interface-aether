@@ -303,20 +303,32 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         if (isFlashExp) {
           const voiceName = config.voiceName || 'Kore';
 
-          setupMessage = {
-            setup: {
-              model: 'models/gemini-2.0-flash-exp',
-              generationConfig: {
-                responseModalities: ['AUDIO'],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: {
-                      voiceName,
-                    },
+          // Build setup payload for gemini-2.0-flash-exp
+          // IMPORTANT: Include systemInstruction for JARVIS persona
+          // and TEXT modality to process images/screen
+          const setupPayload: Record<string, unknown> = {
+            model: 'models/gemini-2.0-flash-exp',
+            generationConfig: {
+              responseModalities: ['AUDIO', 'TEXT'], // TEXT needed for image processing
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName,
                   },
                 },
               },
             },
+          };
+
+          // Add system instruction for JARVIS persona
+          if (config.systemInstruction) {
+            setupPayload.systemInstruction = {
+              parts: [{ text: config.systemInstruction }],
+            };
+          }
+
+          setupMessage = {
+            setup: setupPayload as GeminiSetupMessage['setup'],
           } as GeminiSetupMessage;
         } else {
           // Default/other models: keep the previous robust structure
