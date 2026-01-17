@@ -57,6 +57,18 @@ export interface GeminiSetupMessage {
       temperature?: number;
       topK?: number;
       topP?: number;
+      // Live API voice config
+      speechConfig?: {
+        voiceConfig?: {
+          prebuiltVoiceConfig?: {
+            voiceName: string;
+          };
+        };
+      };
+      // Live API thinking
+      thinkingConfig?: {
+        thinkingBudget?: number;
+      };
     };
     systemInstruction?: {
       parts: Array<{ text: string }>;

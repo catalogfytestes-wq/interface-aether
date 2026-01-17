@@ -181,8 +181,8 @@ const ScreenAgentPanel = ({
     frameRate: 1,
     audioEnabled: true,
     config: {
-      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
-      responseModalities: ['AUDIO', 'TEXT'],
+      model: 'models/gemini-2.0-flash-exp',
+      responseModalities: ['AUDIO'],
       voiceName: selectedVoice,
       enableAffectiveDialog: affectiveDialog,
       proactiveAudio: proactiveAudio,
