@@ -289,21 +289,56 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
-        const setupMessage: GeminiSetupMessage = {
-          setup: {
-            model: modelToTry,
-            generationConfig: {
-              responseModalities: config.responseModalities,
-              temperature: config.temperature,
-              topK: config.topK,
-              topP: config.topP,
-            },
-            ...(config.systemInstruction && {
-              systemInstruction: {
-                parts: [{ text: config.systemInstruction }],
-              },
-            }),
+        // Build setup message with advanced audio features
+        const setupPayload: Record<string, unknown> = {
+          model: modelToTry,
+          generationConfig: {
+            responseModalities: config.responseModalities,
+            temperature: config.temperature,
+            topK: config.topK,
+            topP: config.topP,
           },
+        };
+
+        // Add system instruction
+        if (config.systemInstruction) {
+          setupPayload.systemInstruction = {
+            parts: [{ text: config.systemInstruction }],
+          };
+        }
+
+        // Add voice configuration (speechConfig)
+        if (config.voiceName) {
+          setupPayload.speechConfig = {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: config.voiceName,
+              },
+            },
+          };
+        }
+
+        // Add affective dialog (emotional responses)
+        if (config.enableAffectiveDialog) {
+          setupPayload.enableAffectiveDialog = true;
+        }
+
+        // Add proactive audio (model decides when to respond)
+        if (config.proactiveAudio) {
+          setupPayload.proactivity = {
+            proactiveAudio: true,
+          };
+        }
+
+        // Add thinking budget
+        if (config.thinkingBudget !== undefined) {
+          setupPayload.thinkingConfig = {
+            thinkingBudget: config.thinkingBudget,
+          };
+        }
+
+        const setupMessage: GeminiSetupMessage = {
+          setup: setupPayload as GeminiSetupMessage['setup'],
         };
 
         try {

@@ -17,7 +17,23 @@ export interface GeminiLiveConfig {
   topK?: number;
   topP?: number;
   voiceName?: string;
+  // Advanced native audio features
+  enableAffectiveDialog?: boolean;
+  proactiveAudio?: boolean;
+  thinkingBudget?: number;
 }
+
+// Available Gemini Live voices
+export const GEMINI_VOICES = [
+  { id: 'Puck', name: 'Puck', description: 'Voz neutra e natural' },
+  { id: 'Charon', name: 'Charon', description: 'Voz masculina profunda' },
+  { id: 'Kore', name: 'Kore', description: 'Voz feminina suave' },
+  { id: 'Fenrir', name: 'Fenrir', description: 'Voz masculina grave' },
+  { id: 'Aoede', name: 'Aoede', description: 'Voz feminina melodiosa' },
+  { id: 'Leda', name: 'Leda', description: 'Voz feminina clara' },
+  { id: 'Orus', name: 'Orus', description: 'Voz masculina robusta' },
+  { id: 'Zephyr', name: 'Zephyr', description: 'Voz andrógina suave' },
+] as const;
 
 // Token response from edge function
 export interface GeminiTokenResponse {

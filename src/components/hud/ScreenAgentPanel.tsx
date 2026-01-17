@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Monitor,
@@ -14,8 +14,10 @@ import {
   Minimize2,
   Volume2,
   VolumeX,
-  Wrench,
-  RefreshCcw,
+  Settings2,
+  Zap,
+  Brain,
+  AudioWaveform,
 } from 'lucide-react';
 import { useGeminiScreenAgent } from '@/hooks/useGeminiScreenAgent';
 import { useGeminiAudioPlayer } from '@/hooks/useGeminiAudioPlayer';
@@ -23,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/components/ui/sonner';
+import { Slider } from '@/components/ui/slider';
 import {
   Select,
   SelectContent,
@@ -30,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { GEMINI_VOICES } from '@/lib/gemini/types';
 
 interface ScreenAgentPanelProps {
   isOpen: boolean;
@@ -46,41 +50,114 @@ interface Message {
   timestamp: Date;
 }
 
-const LS_MODEL_KEY = 'jarvis.gemini.liveModel';
+const LS_VOICE_KEY = 'jarvis.gemini.voice';
+const LS_AFFECTIVE_KEY = 'jarvis.gemini.affective';
+const LS_PROACTIVE_KEY = 'jarvis.gemini.proactive';
 
-const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySound, onTTSSpeakingChange }: ScreenAgentPanelProps) => {
+// VU Meter Component
+const VUMeter = ({ level, isPlaying }: { level: number; isPlaying: boolean }) => {
+  const bars = 12;
+  const activeThreshold = level * bars;
+  
+  return (
+    <div className="flex items-end gap-0.5 h-6">
+      {Array.from({ length: bars }).map((_, i) => {
+        const isActive = i < activeThreshold;
+        const intensity = i / bars;
+        const color = intensity > 0.75 
+          ? 'bg-red-500' 
+          : intensity > 0.5 
+            ? 'bg-yellow-500' 
+            : 'bg-cyan-500';
+        
+        return (
+          <motion.div
+            key={i}
+            className={`w-1.5 rounded-sm transition-all duration-75 ${
+              isActive && isPlaying ? color : 'bg-white/10'
+            }`}
+            animate={{
+              height: isActive && isPlaying ? `${(i + 1) * 2}px` : '4px',
+              opacity: isActive && isPlaying ? 1 : 0.3,
+            }}
+            transition={{ duration: 0.05 }}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
+const ScreenAgentPanel = ({ 
+  isOpen, 
+  onClose, 
+  transparentMode = false, 
+  onPlaySound, 
+  onTTSSpeakingChange 
+}: ScreenAgentPanelProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [wsEvents, setWsEvents] = useState<Array<{ ts: number; label: string }>>([]);
-  const [resolvedModel, setResolvedModel] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [autoConnect, setAutoConnect] = useState(true);
+  
+  // Settings state
+  const [selectedVoice, setSelectedVoice] = useState<string>(() => {
     try {
-      return localStorage.getItem(LS_MODEL_KEY) || 'gemini-2.5-flash-native-audio-preview-12-2025';
+      return localStorage.getItem(LS_VOICE_KEY) || 'Kore';
     } catch {
-      return 'gemini-2.5-flash-native-audio-preview-12-2025';
+      return 'Kore';
+    }
+  });
+  
+  const [affectiveDialog, setAffectiveDialog] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(LS_AFFECTIVE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  
+  const [proactiveAudio, setProactiveAudio] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(LS_PROACTIVE_KEY) === 'true';
+    } catch {
+      return false;
     }
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasAutoConnectedRef = useRef(false);
 
-  // Gemini Audio Player - usa áudio nativo da API Live
+  // Persist settings
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_VOICE_KEY, selectedVoice);
+      localStorage.setItem(LS_AFFECTIVE_KEY, String(affectiveDialog));
+      localStorage.setItem(LS_PROACTIVE_KEY, String(proactiveAudio));
+    } catch {
+      // ignore
+    }
+  }, [selectedVoice, affectiveDialog, proactiveAudio]);
+
+  // Gemini Audio Player with VU meter
   const audioPlayer = useGeminiAudioPlayer({
     enabled: voiceEnabled,
-    onPlayStart: () => console.log('[GeminiAudio] Iniciando reprodução'),
+    onPlayStart: () => console.log('[GeminiAudio] Reprodução iniciada'),
     onPlayEnd: () => console.log('[GeminiAudio] Reprodução finalizada'),
+    onAudioLevel: setAudioLevel,
     onError: (err) => console.error('[GeminiAudio] Erro:', err),
   });
 
-  // Notificar mudanças no estado de áudio
+  // Notify speaking state changes
   useEffect(() => {
     onTTSSpeakingChange?.(audioPlayer.isPlaying);
   }, [audioPlayer.isPlaying, onTTSSpeakingChange]);
 
-  const addMessage = (role: 'user' | 'assistant', content: string) => {
+  const addMessage = useCallback((role: 'user' | 'assistant', content: string) => {
     const newMessage: Message = {
       id: Date.now().toString(),
       role,
@@ -88,26 +165,7 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, newMessage]);
-    // Nota: O áudio é reproduzido automaticamente via onAudioResponse no hook
-  };
-
-  const modelPresets = useMemo(
-    () => [
-      { label: 'Auto (2.5 Flash Native Audio - Dez 2025)', value: 'gemini-2.5-flash-native-audio-preview-12-2025' },
-      { label: 'gemini-2.5-flash-native-audio-preview-12-2025', value: 'gemini-2.5-flash-native-audio-preview-12-2025' },
-      { label: 'gemini-2.5-flash-native-audio-preview-09-2025', value: 'gemini-2.5-flash-native-audio-preview-09-2025' },
-      { label: '(Legado) gemini-2.0-flash-live-001', value: 'gemini-2.0-flash-live-001' },
-    ],
-    []
-  );
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_MODEL_KEY, selectedModel);
-    } catch {
-      // ignore
-    }
-  }, [selectedModel]);
+  }, []);
 
   const {
     state,
@@ -123,8 +181,16 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
     frameRate: 1,
     audioEnabled: true,
     config: {
-      model: selectedModel,
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       responseModalities: ['AUDIO', 'TEXT'],
+      voiceName: selectedVoice,
+      enableAffectiveDialog: affectiveDialog,
+      proactiveAudio: proactiveAudio,
+      systemInstruction: `Você é JARVIS, um assistente de IA avançado inspirado no assistente do Tony Stark.
+Você pode ver a tela do usuário em tempo real e ajudar com qualquer tarefa.
+Seja proativo, observador, inteligente e útil. Use um tom sofisticado mas acessível.
+Responda sempre em português brasileiro. Seja conciso nas respostas de voz.
+Quando ver código, analise e sugira melhorias. Quando ver problemas, ofereça soluções.`,
     },
     onTranscript: (text) => {
       if (text.trim()) {
@@ -137,81 +203,63 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
       }
     },
     onAudioResponse: (audioBase64) => {
-      // Envia áudio da API Gemini Live para o player nativo
       audioPlayer.queueAudio(audioBase64);
-    },
-    onWsEvent: (evt) => {
-      const when = new Date(evt.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const base = `${when} • ${evt.type}`;
-      const extra = evt.type === 'close'
-        ? ` (code=${evt.code}, reason=${evt.reason || ''})`
-        : evt.model
-          ? ` (model=${evt.model})`
-          : '';
-      setWsEvents(prev => [...prev, { ts: evt.ts, label: `${base}${extra}` }].slice(-20));
-      if (evt.type === 'setup_complete' && evt.model) {
-        setResolvedModel(evt.model);
-      }
     },
     onError: (error) => {
       console.error('Screen Agent error:', error);
-      addMessage('assistant', `Erro: ${error.message}`);
-
       const msg = error.message || '';
-      const is1008 = msg.includes('code=1008') || msg.includes('(code=1008)');
-      if (is1008) {
-        toast.error('Gemini recusou o modelo (1008). Quer tentar outro automaticamente?', {
-          duration: Infinity,
-          action: {
-            label: 'Trocar e tentar',
-            onClick: async () => {
-              try {
-                stop();
-                await start();
-              } catch (e) {
-                const emsg = e instanceof Error ? e.message : String(e);
-                toast.error(`Falha ao reconectar: ${emsg}`);
-              }
-            },
-          },
-          cancel: {
-            label: 'Fechar',
-            onClick: () => undefined,
-          },
-        });
+      
+      // Auto-retry on connection errors
+      if (msg.includes('code=1008') || msg.includes('not supported')) {
+        toast.error('Modelo não suportado. Reconectando...', { duration: 3000 });
+        setTimeout(() => {
+          if (autoConnect) {
+            start().catch(console.error);
+          }
+        }, 2000);
+      } else {
+        addMessage('assistant', `Erro: ${msg}`);
       }
     },
   });
+
+  // Auto-connect on mount
+  useEffect(() => {
+    if (isOpen && autoConnect && !hasAutoConnectedRef.current && state.connection === 'disconnected') {
+      hasAutoConnectedRef.current = true;
+      start().then(() => {
+        addMessage('assistant', 'JARVIS conectado. Compartilhe sua tela para que eu possa ver o que você está fazendo.');
+      }).catch((err) => {
+        console.error('Auto-connect failed:', err);
+        toast.error('Falha na conexão automática. Tente manualmente.');
+      });
+    }
+    
+    // Reset auto-connect flag when panel closes
+    if (!isOpen) {
+      hasAutoConnectedRef.current = false;
+    }
+  }, [isOpen, autoConnect, state.connection, start, addMessage]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Derived state helpers
+  // Derived state
   const isConnected = state.connection === 'connected';
   const isConnecting = state.connection === 'connecting';
   const isSharing = state.screenShare.isSharing;
   const isMicActive = state.audio.isMicActive;
 
-  const hasWelcomedRef = useRef(false);
-
-  useEffect(() => {
-    if (state.connection === 'connected' && !hasWelcomedRef.current) {
-      hasWelcomedRef.current = true;
-      addMessage('assistant', 'Conectado! Compartilhe sua tela para eu poder ver o que você está fazendo.');
-    }
-    if (state.connection === 'disconnected') {
-      hasWelcomedRef.current = false;
-    }
-  }, [state.connection]);
-
   const handleConnect = async () => {
     onPlaySound?.('activate');
     if (isConnected) {
       stop();
+      audioPlayer.clearQueue();
     } else {
       await start();
+      addMessage('assistant', 'Conectado! Compartilhe sua tela para começar.');
     }
   };
 
@@ -222,7 +270,7 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
       addMessage('assistant', 'Parei de ver sua tela.');
     } else {
       await startScreenShare();
-      addMessage('assistant', 'Agora estou vendo sua tela! Pode me perguntar qualquer coisa sobre o que estou vendo.');
+      addMessage('assistant', 'Agora estou vendo sua tela! Pergunte o que quiser.');
     }
   };
 
@@ -252,29 +300,12 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
     }
   };
 
-  const getConnectionStatusColor = () => {
+  const getConnectionColor = () => {
     switch (state.connection) {
-      case 'connected':
-        return 'text-green-400';
-      case 'connecting':
-        return 'text-yellow-400';
-      case 'error':
-        return 'text-red-400';
-      default:
-        return 'text-white/40';
-    }
-  };
-
-  const getConnectionStatusText = () => {
-    switch (state.connection) {
-      case 'connected':
-        return 'Conectado';
-      case 'connecting':
-        return 'Conectando...';
-      case 'error':
-        return 'Erro';
-      default:
-        return 'Desconectado';
+      case 'connected': return 'text-green-400';
+      case 'connecting': return 'text-yellow-400';
+      case 'error': return 'text-red-400';
+      default: return 'text-white/40';
     }
   };
 
@@ -290,29 +321,36 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -300 }}
         className={`fixed left-64 top-1/2 -translate-y-1/2 z-40 cursor-grab active:cursor-grabbing ${
-          isExpanded ? 'w-[500px] h-[80vh]' : 'w-[380px] h-[500px]'
-        } flex flex-col rounded-lg border backdrop-blur-xl transition-all duration-300 ${
+          isExpanded ? 'w-[520px] h-[85vh]' : 'w-[400px] h-[550px]'
+        } flex flex-col rounded-xl border backdrop-blur-xl transition-all duration-300 ${
           transparentMode
             ? 'bg-white/10 border-white/20'
-            : 'bg-black/90 border-white/10'
+            : 'bg-black/95 border-cyan-500/30'
         }`}
+        style={{ boxShadow: '0 0 40px rgba(0, 255, 255, 0.1)' }}
       >
         {/* Header */}
         <div className={`flex items-center justify-between p-3 border-b ${
-          transparentMode ? 'border-white/20' : 'border-white/10'
+          transparentMode ? 'border-white/20' : 'border-cyan-500/20'
         }`}>
           <div className="flex items-center gap-3">
-            <div className={`w-2 h-2 rounded-full ${
-              isConnected ? 'bg-green-400' : 'bg-white/30'
-            }`} />
-            <span className="text-sm font-medium text-white/80">Screen Agent</span>
-            <span className={`text-xs ${getConnectionStatusColor()}`}>
-              {getConnectionStatusText()}
-            </span>
+            <motion.div 
+              className={`w-2.5 h-2.5 rounded-full ${
+                isConnected ? 'bg-green-400' : 'bg-white/30'
+              }`}
+              animate={isConnected ? { 
+                boxShadow: ['0 0 0px rgba(74, 222, 128, 0.5)', '0 0 10px rgba(74, 222, 128, 0.8)', '0 0 0px rgba(74, 222, 128, 0.5)']
+              } : {}}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+            <span className="text-sm font-medium text-white/90">JARVIS Screen Agent</span>
           </div>
           
-          <div className="flex items-center gap-2">
-            {/* Voice Toggle */}
+          <div className="flex items-center gap-1.5">
+            {/* VU Meter */}
+            <VUMeter level={audioLevel} isPlaying={audioPlayer.isPlaying} />
+            
+            {/* Volume Toggle */}
             <motion.button
               onClick={() => {
                 onPlaySound?.('click');
@@ -324,25 +362,27 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className={`p-1.5 rounded transition-colors ${
-                voiceEnabled 
-                  ? 'text-cyan-400 hover:text-cyan-300' 
-                  : 'text-white/30 hover:text-white/50'
+                voiceEnabled ? 'text-cyan-400 hover:text-cyan-300' : 'text-white/30 hover:text-white/50'
               }`}
-              title={voiceEnabled ? 'Áudio Gemini ativo' : 'Áudio desativado'}
+              title={voiceEnabled ? 'Áudio ativo' : 'Áudio desativado'}
             >
               {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
             </motion.button>
 
-            {/* Audio Queue Indicator */}
-            {audioPlayer.isPlaying && (
-              <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-500/20 text-green-400">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] font-mono">
-                  {audioPlayer.queueLength > 0 ? `+${audioPlayer.queueLength}` : 'PLAYING'}
-                </span>
-              </div>
-            )}
+            {/* Settings */}
+            <motion.button
+              onClick={() => setSettingsOpen(!settingsOpen)}
+              onMouseEnter={() => onPlaySound?.('hover')}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className={`p-1.5 rounded transition-colors ${
+                settingsOpen ? 'text-cyan-400' : 'text-white/50 hover:text-white'
+              }`}
+            >
+              <Settings2 size={14} />
+            </motion.button>
             
+            {/* Expand/Collapse */}
             <motion.button
               onClick={() => setIsExpanded(!isExpanded)}
               onMouseEnter={() => onPlaySound?.('hover')}
@@ -352,168 +392,175 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
             >
               {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </motion.button>
+            
+            {/* Close */}
             <motion.button
-              onClick={onClose}
+              onClick={() => {
+                stop();
+                onClose();
+              }}
               onMouseEnter={() => onPlaySound?.('hover')}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
-              className="p-1.5 rounded text-white/50 hover:text-white transition-colors"
+              className="p-1.5 rounded text-white/50 hover:text-red-400 transition-colors"
             >
               <X size={14} />
             </motion.button>
           </div>
         </div>
 
-        {/* Control Bar */}
-        <div className={`flex flex-col gap-2 p-3 border-b ${
-          transparentMode ? 'border-white/20' : 'border-white/10'
-        }`}>
-          <div className="flex items-center justify-center gap-3">
-            {/* Connect Button */}
-            <motion.button
-              onClick={handleConnect}
-              onMouseEnter={() => onPlaySound?.('hover')}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
-                isConnected
-                  ? 'bg-green-500/20 border border-green-500/50 text-green-400'
-                  : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
+        {/* Settings Panel */}
+        <AnimatePresence>
+          {settingsOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className={`overflow-hidden border-b ${
+                transparentMode ? 'border-white/20' : 'border-cyan-500/20'
               }`}
-              disabled={isConnecting}
             >
-              {isConnecting ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : isConnected ? (
-                <Wifi size={14} />
-              ) : (
-                <WifiOff size={14} />
-              )}
-              {isConnected ? 'Conectado' : 'Conectar'}
-            </motion.button>
-
-            {/* Screen Share Button */}
-            <motion.button
-              onClick={handleScreenShare}
-              onMouseEnter={() => onPlaySound?.('hover')}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
-                isSharing
-                  ? 'bg-cyan-500/20 border border-cyan-500/50 text-cyan-400'
-                  : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
-              }`}
-              disabled={!isConnected}
-            >
-              {isSharing ? <Monitor size={14} /> : <MonitorOff size={14} />}
-              {isSharing ? 'Compartilhando' : 'Compartilhar'}
-            </motion.button>
-
-            {/* Microphone Button */}
-            <motion.button
-              onClick={handleMicrophone}
-              onMouseEnter={() => onPlaySound?.('hover')}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
-                isMicActive
-                  ? 'bg-purple-500/20 border border-purple-500/50 text-purple-400'
-                  : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
-              }`}
-              disabled={!isConnected}
-            >
-              {isMicActive ? <Mic size={14} /> : <MicOff size={14} />}
-              {isMicActive ? 'Mic On' : 'Mic Off'}
-            </motion.button>
-          </div>
-
-          {/* Debug row */}
-          <div className="flex items-center justify-between gap-2 px-1">
-            <div className="text-[11px] text-white/50 terminal-text">
-              Modelo ativo: <span className="text-white/80">{resolvedModel ?? '—'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <motion.button
-                onClick={async () => {
-                  onPlaySound?.('click');
-                  try {
-                    await start();
-                    toast.success(`Gemini OK: ${resolvedModel ?? 'conectado'}`);
-                  } catch (e) {
-                    const emsg = e instanceof Error ? e.message : String(e);
-                    toast.error(`Falha no teste: ${emsg}`, { duration: 8000 });
-                  }
-                }}
-                onMouseEnter={() => onPlaySound?.('hover')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] border bg-white/10 border-white/20 text-white/70 hover:text-white hover:border-white/40"
-              >
-                <RefreshCcw size={12} />
-                Testar conexão Gemini
-              </motion.button>
-
-              <motion.button
-                onClick={() => setAdvancedOpen(v => !v)}
-                onMouseEnter={() => onPlaySound?.('hover')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] border bg-white/10 border-white/20 text-white/70 hover:text-white hover:border-white/40"
-              >
-                <Wrench size={12} />
-                Avançado
-              </motion.button>
-            </div>
-          </div>
-
-          {advancedOpen && (
-            <div className="mt-1 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="text-[11px] text-white/50 terminal-text whitespace-nowrap">Modelo preferido</div>
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger className="h-8 bg-white/5 border-white/20 text-white text-xs">
-                    <SelectValue placeholder="Selecione um modelo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modelPresets.map(p => (
-                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className={`rounded border p-2 ${transparentMode ? 'border-white/20 bg-white/5' : 'border-white/10 bg-black/40'}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="text-[11px] text-white/60 terminal-text">Últimos 20 eventos WebSocket</div>
-                  <button
-                    className="text-[11px] text-white/40 hover:text-white/70 terminal-text"
-                    onClick={() => setWsEvents([])}
-                  >
-                    limpar
-                  </button>
+              <div className="p-3 space-y-3">
+                {/* Voice Selector */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-white/60 flex items-center gap-1">
+                    <AudioWaveform size={12} />
+                    Voz do JARVIS
+                  </label>
+                  <Select value={selectedVoice} onValueChange={setSelectedVoice}>
+                    <SelectTrigger className="h-8 bg-white/5 border-white/20 text-white text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GEMINI_VOICES.map(voice => (
+                        <SelectItem key={voice.id} value={voice.id}>
+                          <div className="flex flex-col">
+                            <span>{voice.name}</span>
+                            <span className="text-[10px] text-white/50">{voice.description}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <ScrollArea className="h-28">
-                  <div className="space-y-1">
-                    {wsEvents.length === 0 ? (
-                      <div className="text-[11px] text-white/30 terminal-text">(sem eventos ainda)</div>
-                    ) : (
-                      wsEvents.map((e) => (
-                        <div key={e.ts + e.label} className="text-[11px] text-white/50 terminal-text break-words">{e.label}</div>
-                      ))
-                    )}
-                  </div>
-                </ScrollArea>
+
+                {/* Volume Slider */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-white/60">Volume</label>
+                  <Slider
+                    value={[audioPlayer.volume * 100]}
+                    onValueChange={([v]) => audioPlayer.setVolume(v / 100)}
+                    max={100}
+                    step={1}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Advanced Features */}
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={affectiveDialog}
+                      onChange={(e) => setAffectiveDialog(e.target.checked)}
+                      className="w-3 h-3 rounded border-white/30 bg-white/10"
+                    />
+                    <span className="text-[11px] text-white/70 flex items-center gap-1">
+                      <Zap size={10} className="text-yellow-400" />
+                      Diálogo Afetivo
+                    </span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={proactiveAudio}
+                      onChange={(e) => setProactiveAudio(e.target.checked)}
+                      className="w-3 h-3 rounded border-white/30 bg-white/10"
+                    />
+                    <span className="text-[11px] text-white/70 flex items-center gap-1">
+                      <Brain size={10} className="text-purple-400" />
+                      Áudio Proativo
+                    </span>
+                  </label>
+                </div>
+
+                <p className="text-[10px] text-white/40">
+                  Reinicie a conexão após alterar as configurações.
+                </p>
               </div>
-            </div>
+            </motion.div>
           )}
+        </AnimatePresence>
+
+        {/* Control Bar */}
+        <div className={`flex items-center justify-center gap-2 p-3 border-b ${
+          transparentMode ? 'border-white/20' : 'border-cyan-500/20'
+        }`}>
+          {/* Connect Button */}
+          <motion.button
+            onClick={handleConnect}
+            onMouseEnter={() => onPlaySound?.('hover')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all ${
+              isConnected
+                ? 'bg-green-500/20 border border-green-500/50 text-green-400'
+                : 'bg-cyan-500/20 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/30'
+            }`}
+            disabled={isConnecting}
+          >
+            {isConnecting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : isConnected ? (
+              <Wifi size={14} />
+            ) : (
+              <WifiOff size={14} />
+            )}
+            {isConnecting ? 'Conectando...' : isConnected ? 'Conectado' : 'Conectar'}
+          </motion.button>
+
+          {/* Screen Share Button */}
+          <motion.button
+            onClick={handleScreenShare}
+            onMouseEnter={() => onPlaySound?.('hover')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all ${
+              isSharing
+                ? 'bg-cyan-500/30 border border-cyan-500/60 text-cyan-300'
+                : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
+            }`}
+            disabled={!isConnected}
+          >
+            {isSharing ? <Monitor size={14} /> : <MonitorOff size={14} />}
+            {isSharing ? 'Compartilhando' : 'Tela'}
+          </motion.button>
+
+          {/* Microphone Button */}
+          <motion.button
+            onClick={handleMicrophone}
+            onMouseEnter={() => onPlaySound?.('hover')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all ${
+              isMicActive
+                ? 'bg-purple-500/30 border border-purple-500/60 text-purple-300'
+                : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
+            }`}
+            disabled={!isConnected}
+          >
+            {isMicActive ? <Mic size={14} /> : <MicOff size={14} />}
+            {isMicActive ? 'Mic On' : 'Mic'}
+          </motion.button>
         </div>
 
-        {/* Screen Preview (hidden video element + preview) */}
+        {/* Screen Preview */}
         <video ref={screenVideoRef} autoPlay muted className="hidden" />
         
         {isSharing && (
-          <div className={`relative h-32 mx-3 mt-3 rounded overflow-hidden border ${
-            transparentMode ? 'border-white/20' : 'border-white/10'
+          <div className={`relative h-28 mx-3 mt-3 rounded-lg overflow-hidden border ${
+            transparentMode ? 'border-white/20' : 'border-cyan-500/30'
           }`}>
             <video 
               ref={screenVideoRef}
@@ -521,8 +568,12 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
               muted 
               className="w-full h-full object-contain bg-black/50"
             />
-            <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded bg-cyan-500/20 text-cyan-400">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/30 text-red-400">
+              <motion.div 
+                className="w-1.5 h-1.5 rounded-full bg-red-500"
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
               <span className="text-[10px] font-mono">LIVE</span>
             </div>
           </div>
@@ -533,9 +584,9 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
           <div className="space-y-3">
             {messages.length === 0 ? (
               <div className="text-center text-white/40 text-xs py-8">
-                <Monitor className="mx-auto mb-2 opacity-50" size={24} />
-                <p>Conecte-se e compartilhe sua tela</p>
-                <p>para começar a conversar com o JARVIS</p>
+                <Monitor className="mx-auto mb-3 opacity-50" size={28} />
+                <p className="text-sm text-white/60 mb-1">JARVIS Screen Agent</p>
+                <p className="text-white/40">Conectando automaticamente...</p>
               </div>
             ) : (
               messages.map((msg) => (
@@ -545,10 +596,10 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
                   animate={{ opacity: 1, y: 0 }}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                  <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
                     msg.role === 'user'
-                      ? 'bg-cyan-500/20 text-cyan-100 rounded-br-sm'
-                      : 'bg-white/10 text-white/80 rounded-bl-sm'
+                      ? 'bg-cyan-500/20 text-cyan-100 rounded-br-sm border border-cyan-500/30'
+                      : 'bg-white/10 text-white/90 rounded-bl-sm border border-white/10'
                   }`}>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                     <span className="text-[10px] opacity-50 mt-1 block">
@@ -564,7 +615,7 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
 
         {/* Input Area */}
         <div className={`p-3 border-t ${
-          transparentMode ? 'border-white/20' : 'border-white/10'
+          transparentMode ? 'border-white/20' : 'border-cyan-500/20'
         }`}>
           <div className="flex gap-2">
             <Input
@@ -572,18 +623,30 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder={isConnected ? "Digite sua pergunta..." : "Conecte-se primeiro..."}
+              placeholder={isConnected ? "Digite sua pergunta..." : "Aguardando conexão..."}
               disabled={!isConnected}
-              className="flex-1 bg-white/5 border-white/20 text-white placeholder:text-white/30 text-sm"
+              className="flex-1 bg-white/5 border-white/20 text-white placeholder:text-white/30 text-sm rounded-lg"
             />
             <Button
               onClick={handleSendMessage}
               disabled={!isConnected || !inputText.trim()}
               size="icon"
-              className="bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-400"
+              className="bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-400 rounded-lg"
             >
               <Send size={16} />
             </Button>
+          </div>
+          
+          {/* Status Bar */}
+          <div className="flex items-center justify-between mt-2 px-1">
+            <span className={`text-[10px] ${getConnectionColor()}`}>
+              {state.connection === 'connected' ? '● Gemini 2.5 Flash Native Audio' : 
+               state.connection === 'connecting' ? '◌ Conectando...' :
+               state.connection === 'error' ? '✕ Erro de conexão' : '○ Desconectado'}
+            </span>
+            <span className="text-[10px] text-white/30">
+              Voz: {selectedVoice}
+            </span>
           </div>
         </div>
       </motion.div>
