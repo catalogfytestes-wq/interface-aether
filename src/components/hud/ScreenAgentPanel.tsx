@@ -13,7 +13,8 @@ import {
   Maximize2,
   Minimize2,
   Volume2,
-  VolumeX
+  VolumeX,
+  MessageCircle
 } from 'lucide-react';
 import { useGeminiScreenAgent } from '@/hooks/useGeminiScreenAgent';
 import { useJarvisTTS } from '@/hooks/useJarvisTTS';
@@ -26,6 +27,7 @@ interface ScreenAgentPanelProps {
   onClose: () => void;
   transparentMode?: boolean;
   onPlaySound?: (type: 'hover' | 'click' | 'activate') => void;
+  onTTSSpeakingChange?: (isSpeaking: boolean) => void;
 }
 
 interface Message {
@@ -35,7 +37,7 @@ interface Message {
   timestamp: Date;
 }
 
-const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySound }: ScreenAgentPanelProps) => {
+const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySound, onTTSSpeakingChange }: ScreenAgentPanelProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -45,6 +47,11 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
 
   // TTS Hook para voz do JARVIS
   const { speakAsync, isSpeaking, isConnected: ttsConnected } = useJarvisTTS();
+
+  // Notificar mudanças no estado de TTS
+  useEffect(() => {
+    onTTSSpeakingChange?.(isSpeaking);
+  }, [isSpeaking, onTTSSpeakingChange]);
 
   const addMessage = (role: 'user' | 'assistant', content: string) => {
     const newMessage: Message = {
@@ -237,6 +244,28 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
               title={voiceEnabled ? (ttsConnected ? 'Voz JARVIS ativa' : 'Servidor Python offline') : 'Voz desativada'}
             >
               {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            </motion.button>
+
+            {/* Test Voice Button */}
+            <motion.button
+              onClick={() => {
+                onPlaySound?.('click');
+                speakAsync('Olá, eu sou JARVIS, seu assistente virtual. Estou pronto para ajudar.', { rate: 145 });
+              }}
+              onMouseEnter={() => onPlaySound?.('hover')}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className={`p-1.5 rounded transition-colors ${
+                ttsConnected 
+                  ? isSpeaking
+                    ? 'text-green-400 animate-pulse'
+                    : 'text-cyan-400 hover:text-cyan-300'
+                  : 'text-white/30 cursor-not-allowed'
+              }`}
+              title={ttsConnected ? (isSpeaking ? 'Falando...' : 'Testar voz') : 'Servidor Python offline'}
+              disabled={!ttsConnected}
+            >
+              <MessageCircle size={14} />
             </motion.button>
             
             <motion.button

@@ -38,11 +38,12 @@ interface MinimizedMenuProps {
   onVoiceToggle?: () => void;
   onWidgetCommandRef?: MutableRefObject<(widget: string | null) => void>;
   transparentMode?: boolean;
+  onTTSSpeakingChange?: (isSpeaking: boolean) => void;
 }
 
 type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagnostics' | 'notifications' | 'network' | 'battery' | 'screenagent' | null;
 
-const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef, transparentMode = false }: MinimizedMenuProps) => {
+const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef, transparentMode = false, onTTSSpeakingChange }: MinimizedMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeWidget, setActiveWidget] = useState<WidgetType>(null);
   const navigate = useNavigate();
@@ -388,6 +389,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
         onClose={() => setActiveWidget(null)}
         transparentMode={transparentMode}
         onPlaySound={onPlaySound}
+        onTTSSpeakingChange={onTTSSpeakingChange}
       />
     </div>
   );
