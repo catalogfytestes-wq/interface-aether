@@ -35,7 +35,7 @@ interface UseGeminiLiveReturn {
 }
 
 const DEFAULT_CONFIG: GeminiLiveConfig = {
-  model: 'gemini-2.0-flash-live-001',
+  model: 'gemini-2.5-flash-native-audio-preview-12-2025',
   responseModalities: ['AUDIO', 'TEXT'],
   systemInstruction: `Você é JARVIS, um assistente de IA avançado que pode ver a tela do usuário em tempo real.
 Você está aqui para ajudar com qualquer tarefa que o usuário esteja realizando.
@@ -238,7 +238,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         // Send setup message
         const setupMessage: GeminiSetupMessage = {
           setup: {
-            model: config.model || 'gemini-2.0-flash-live-001',
+            model: config.model || 'gemini-2.5-flash-native-audio-preview-12-2025',
             generationConfig: {
               responseModalities: config.responseModalities,
               temperature: config.temperature,
