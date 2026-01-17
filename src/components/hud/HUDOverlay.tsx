@@ -27,6 +27,8 @@ const HUDOverlay = ({
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMiniMode, setIsMiniMode] = useState(false);
   const [isTTSSpeaking, setIsTTSSpeaking] = useState(false);
+  const [clapProgress, setClapProgress] = useState(0);
+  const clapResetTimeoutRef = useRef<number | null>(null);
   const { playSound, toggleSound } = useSoundEffects();
   const { audioLevel, isCapturing, startCapturing, stopCapturing } = useAudioLevel();
   const playSoundRef = useRef(playSound);
@@ -178,8 +180,15 @@ const HUDOverlay = ({
     },
     onFinalTranscript: handleFinalTranscript,
     onWakeWord: handleWakeWord,
+    onClapProgress: (count) => {
+      // mostra um indicador temporário de 0-3
+      setClapProgress(count);
+      if (clapResetTimeoutRef.current) window.clearTimeout(clapResetTimeoutRef.current);
+      clapResetTimeoutRef.current = window.setTimeout(() => setClapProgress(0), 900);
+    },
     wakeWord: 'jarvis',
     alwaysListenForWakeWord: true,
+    enableClapDetection: true,
   });
 
   // Update system mode based on state
@@ -220,15 +229,18 @@ const HUDOverlay = ({
       toast.error('Reconhecimento de voz não suportado neste navegador');
       return;
     }
-    
+
+    // Garante gesto do usuário + permissão do microfone antes de alternar a escuta
+    await armWakeWord();
+
     if (!isListening) {
       toast('🎤 Ouvindo comandos de voz...', {
         description: 'Diga "abrir música", "abrir clima", etc.',
       });
     }
-    
+
     toggleListening();
-  }, [isSupported, toggleListening, isListening]);
+  }, [isSupported, toggleListening, isListening, armWakeWord]);
 
   const getStatusText = () => {
     if (isListening && transcript) return transcript;
@@ -368,6 +380,20 @@ const HUDOverlay = ({
                 : '🔇 CLIQUE PARA ATIVAR MICROFONE'}
           </span>
         </button>
+
+        {/* Indicador temporário de palmas (1-3) */}
+        {clapProgress > 0 && (
+          <div className="mt-2 flex items-center justify-center gap-1">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className={`h-1.5 w-8 rounded-full border ${
+                  n <= clapProgress ? 'bg-white/40 border-white/40' : 'bg-white/5 border-white/10'
+                }`}
+              />
+            ))}
+          </div>
+        )}
 
         {lastError && (
           <div className="mt-2 text-center">

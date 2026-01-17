@@ -5,6 +5,7 @@ interface UseVoiceRecognitionOptions {
   onFinalTranscript?: (transcript: string) => void;
   onListeningChange?: (isListening: boolean) => void;
   onWakeWord?: () => void;
+  onClapProgress?: (count: number) => void;
   wakeWord?: string;
   language?: string;
   alwaysListenForWakeWord?: boolean;
@@ -111,6 +112,7 @@ const useVoiceRecognition = ({
   onFinalTranscript,
   onListeningChange,
   onWakeWord,
+  onClapProgress,
   wakeWord = 'jarvis',
   language = 'pt-BR',
   alwaysListenForWakeWord = true,
@@ -124,16 +126,18 @@ const useVoiceRecognition = ({
   const [lastError, setLastError] = useState<string | null>(null);
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
-  const callbacksRef = useRef({ onTranscript, onFinalTranscript, onListeningChange, onWakeWord });
+  const callbacksRef = useRef({ onTranscript, onFinalTranscript, onListeningChange, onWakeWord, onClapProgress });
   const wakeWordRef = useRef(wakeWord);
   const alwaysListenRef = useRef(alwaysListenForWakeWord);
   const isListeningRef = useRef(false);
   const isRunningRef = useRef(false);
+  const hasUserArmedRef = useRef(false);
   const restartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTranscriptRef = useRef('');
   const commandExecutedRef = useRef(false);
-  
+  const lastRestartAtRef = useRef(0);
+
   // Clap detection refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -145,18 +149,24 @@ const useVoiceRecognition = ({
 
   // Keep callbacks up to date
   useEffect(() => {
-    callbacksRef.current = { onTranscript, onFinalTranscript, onListeningChange, onWakeWord };
+    callbacksRef.current = { onTranscript, onFinalTranscript, onListeningChange, onWakeWord, onClapProgress };
     wakeWordRef.current = wakeWord;
     alwaysListenRef.current = alwaysListenForWakeWord;
-  }, [onTranscript, onFinalTranscript, onListeningChange, onWakeWord, wakeWord, alwaysListenForWakeWord]);
+  }, [onTranscript, onFinalTranscript, onListeningChange, onWakeWord, onClapProgress, wakeWord, alwaysListenForWakeWord]);
 
-  // Clap detection with Web Audio API
   useEffect(() => {
+    // IMPORTANT: manter um stream de microfone aberto pode derrubar o SpeechRecognition em alguns navegadores.
+    // Por isso, só ativamos a detecção de palmas depois que o usuário "armar" (gesto do usuário) e
+    // apenas quando o SpeechRecognition NÃO estiver rodando.
     if (!enableClapDetection || !alwaysListenForWakeWord) return;
     
     let mounted = true;
     
     const setupClapDetection = async () => {
+      if (!hasUserArmedRef.current) return;
+      if (isRunningRef.current) return;
+      if (micPermission !== 'granted') return;
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (!mounted) {
@@ -212,6 +222,7 @@ const useVoiceRecognition = ({
             }
             
             lastClapTimeRef.current = now;
+            callbacksRef.current.onClapProgress?.(clapCountRef.current);
             console.log(`👏 Clap detected! Count: ${clapCountRef.current}`);
             
             // Short cooldown to prevent double detection
@@ -227,7 +238,8 @@ const useVoiceRecognition = ({
             if (clapCountRef.current >= CLAPS_REQUIRED) {
               console.log('👏👏👏 Triple clap detected! Activating JARVIS...');
               clapCountRef.current = 0;
-              
+              callbacksRef.current.onClapProgress?.(0);
+
               // Trigger wake word
               if (!isListeningRef.current) {
                 callbacksRef.current.onWakeWord?.();
@@ -241,6 +253,7 @@ const useVoiceRecognition = ({
               // Reset after timeout
               clapTimeoutRef.current = setTimeout(() => {
                 clapCountRef.current = 0;
+                callbacksRef.current.onClapProgress?.(0);
               }, CLAP_MAX_INTERVAL);
             }
           }
@@ -274,7 +287,7 @@ const useVoiceRecognition = ({
         audioContextRef.current.close();
       }
     };
-  }, [enableClapDetection, alwaysListenForWakeWord]);
+  }, [enableClapDetection, alwaysListenForWakeWord, micPermission]);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -326,12 +339,17 @@ const useVoiceRecognition = ({
       }
     };
 
-    const scheduleRestart = (delay: number = 50) => {
+    const scheduleRestart = (delay: number = 500) => {
       if (restartTimeoutRef.current) {
         clearTimeout(restartTimeoutRef.current);
       }
       restartTimeoutRef.current = setTimeout(() => {
-        if (alwaysListenRef.current && !isRunningRef.current) {
+        const now = Date.now();
+        // Evita loop agressivo start/end
+        if (now - lastRestartAtRef.current < 400) return;
+        lastRestartAtRef.current = now;
+
+        if (alwaysListenRef.current && !isRunningRef.current && hasUserArmedRef.current) {
           console.log('🔄 Restarting wake word detection...');
           safeStart();
         }
@@ -372,8 +390,8 @@ const useVoiceRecognition = ({
       isRunningRef.current = false;
       
       if (alwaysListenRef.current) {
-        // Quick restart for better sensitivity
-        scheduleRestart(100);
+        // Restart mais estável (evita flapping)
+        scheduleRestart(800);
       } else {
         setIsWakeWordListening(false);
       }
@@ -488,19 +506,8 @@ const useVoiceRecognition = ({
 
     recognitionRef.current = recognition;
 
-    if (alwaysListenForWakeWord) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-        setMicPermission('granted');
-        setLastError(null);
-        stream.getTracks().forEach((t) => t.stop());
-        console.log('🎙️ Mic ready - listening for "OK JARVIS", custom phrases, or 3 claps');
-        safeStart();
-      }).catch((e) => {
-        console.error('Microphone permission denied:', e);
-        setMicPermission('denied');
-        setLastError('Permissão de microfone negada');
-      });
-    }
+    // NÃO auto-inicia no mount: precisa de gesto do usuário (armWakeWord/startListening)
+    // para ser confiável em Chrome/Safari e evitar loops start/end.
 
     return () => {
       clearTimers();
@@ -554,6 +561,8 @@ const useVoiceRecognition = ({
       setMicPermission('granted');
       setLastError(null);
       stream.getTracks().forEach((t) => t.stop());
+
+      hasUserArmedRef.current = true;
 
       if (!isRunningRef.current) {
         try {
