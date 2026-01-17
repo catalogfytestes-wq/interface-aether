@@ -295,10 +295,13 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   return (
     <AnimatePresence>
       <motion.div
+        drag
+        dragMomentum={false}
+        dragElastic={0.1}
         initial={{ opacity: 0, x: -300 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -300 }}
-        className={`fixed left-64 top-1/2 -translate-y-1/2 z-40 ${
+        className={`fixed left-64 top-1/2 -translate-y-1/2 z-40 cursor-grab active:cursor-grabbing ${
           isExpanded ? 'w-[500px] h-[80vh]' : 'w-[380px] h-[500px]'
         } flex flex-col rounded-lg border backdrop-blur-xl transition-all duration-300 ${
           transparentMode
