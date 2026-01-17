@@ -59,9 +59,9 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   const [resolvedModel, setResolvedModel] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     try {
-      return localStorage.getItem(LS_MODEL_KEY) || 'gemini-2.0-flash-live-001';
+      return localStorage.getItem(LS_MODEL_KEY) || 'gemini-2.5-flash-native-audio-preview-12-2025';
     } catch {
-      return 'gemini-2.0-flash-live-001';
+      return 'gemini-2.5-flash-native-audio-preview-12-2025';
     }
   });
 
@@ -106,11 +106,10 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
 
   const modelPresets = useMemo(
     () => [
-      { label: 'Auto (recomendado)', value: 'gemini-2.0-flash-live-001' },
-      { label: 'gemini-2.0-flash-live-001 (EU/US)', value: 'gemini-2.0-flash-live-001' },
-      { label: 'gemini-2.5-flash-preview-native-audio-dialog', value: 'gemini-2.5-flash-preview-native-audio-dialog' },
-      { label: 'gemini-2.0-flash-live-preview-04-09 (US)', value: 'gemini-2.0-flash-live-preview-04-09' },
-      { label: 'gemini-2.0-flash-exp', value: 'gemini-2.0-flash-exp' },
+      { label: 'Auto (2.5 Flash Native Audio - Dez 2025)', value: 'gemini-2.5-flash-native-audio-preview-12-2025' },
+      { label: 'gemini-2.5-flash-native-audio-preview-12-2025', value: 'gemini-2.5-flash-native-audio-preview-12-2025' },
+      { label: 'gemini-2.5-flash-native-audio-preview-09-2025', value: 'gemini-2.5-flash-native-audio-preview-09-2025' },
+      { label: '(Legado) gemini-2.0-flash-live-001', value: 'gemini-2.0-flash-live-001' },
     ],
     []
   );
