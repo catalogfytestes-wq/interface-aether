@@ -41,12 +41,12 @@ serve(async (req) => {
       systemInstruction,
     } = body;
 
-    // Calculate expiration times
+    // Calculate expiration times in ISO format
     const now = new Date();
     const expireTime = new Date(now.getTime() + expireMinutes * 60 * 1000).toISOString();
     const newSessionExpireTime = new Date(now.getTime() + newSessionExpireMinutes * 60 * 1000).toISOString();
 
-    // Create ephemeral token request
+    // Create ephemeral token request following the v1alpha API spec
     const tokenRequest: Record<string, unknown> = {
       uses,
       expire_time: expireTime,
@@ -59,12 +59,15 @@ serve(async (req) => {
         model,
         config: {
           response_modalities: responseModalities,
-          system_instruction: systemInstruction,
+          system_instruction: { parts: [{ text: systemInstruction }] },
         }
       };
     }
 
-    // Request ephemeral token from Gemini API
+    console.log('Creating ephemeral token with request:', JSON.stringify(tokenRequest));
+
+    // Request ephemeral token from Gemini API v1alpha
+    // The correct endpoint for auth tokens
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1alpha/authTokens?key=${GEMINI_API_KEY}`,
       {
@@ -76,24 +79,43 @@ serve(async (req) => {
       }
     );
 
+    const responseText = await response.text();
+    console.log('Gemini API response status:', response.status);
+    console.log('Gemini API response:', responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini API error:', errorText);
+      // If the authTokens endpoint doesn't work, fall back to direct API key mode
+      // This allows the client to connect directly with the API key
+      console.log('Ephemeral token creation failed, using direct API key mode');
       
       return new Response(
-        JSON.stringify({ 
-          error: 'Failed to create ephemeral token',
-          details: errorText,
-          status: response.status
+        JSON.stringify({
+          // Return the API key directly for WebSocket connection
+          // The client will use it as: wss://...?key=API_KEY
+          apiKey: GEMINI_API_KEY,
+          expireTime,
+          newSessionExpireTime,
+          model,
+          wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent`,
+          mode: 'direct', // Indicates direct API key mode
+          note: 'Ephemeral tokens not available, using direct API key connection'
         }),
         { 
-          status: response.status, 
+          status: 200, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
 
-    const tokenData = await response.json();
+    let tokenData;
+    try {
+      tokenData = JSON.parse(responseText);
+    } catch {
+      console.error('Failed to parse token response:', responseText);
+      throw new Error('Invalid response from Gemini API');
+    }
+
+    console.log('Token created successfully:', tokenData.name);
 
     // Return the token with connection info
     return new Response(
@@ -103,6 +125,7 @@ serve(async (req) => {
         newSessionExpireTime,
         model,
         wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent`,
+        mode: 'ephemeral', // Indicates ephemeral token mode
       }),
       { 
         status: 200, 

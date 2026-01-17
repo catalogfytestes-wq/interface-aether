@@ -173,7 +173,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     updateState({ connectionState: 'connecting', error: null });
 
     try {
-      // Get ephemeral token
+      // Get ephemeral token or API key
       const token = await getToken();
       if (!token) {
         updateState({ 
@@ -184,8 +184,21 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       }
       tokenRef.current = token;
 
-      // Connect to WebSocket with token
-      const wsUrl = `${token.wsUrl}?key=${token.token}`;
+      // Build WebSocket URL based on mode
+      // In 'direct' mode, use API key; in 'ephemeral' mode, use access_token
+      let wsUrl: string;
+      if (token.mode === 'direct' && token.apiKey) {
+        // Direct API key mode
+        wsUrl = `${token.wsUrl}?key=${token.apiKey}`;
+        console.log('Gemini Live: Using direct API key mode');
+      } else if (token.token) {
+        // Ephemeral token mode - use access_token parameter
+        wsUrl = `${token.wsUrl}?access_token=${token.token}`;
+        console.log('Gemini Live: Using ephemeral token mode');
+      } else {
+        throw new Error('No valid authentication method available');
+      }
+
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
