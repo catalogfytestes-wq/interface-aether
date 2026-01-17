@@ -89,10 +89,10 @@ export function useGeminiVoiceAssistant(
   });
 
   // Gemini Live config
-  // Nota: gemini-2.0-flash-exp suporta apenas AUDIO como responseModality
-  // A systemInstruction é enviada no setup para dar contexto ao modelo
+  // Modelo oficial para Live API: gemini-2.5-flash-native-audio-preview-12-2025
+  // Ref: https://ai.google.dev/gemini-api/docs/live
   const config: GeminiLiveConfig = {
-    model: 'models/gemini-2.0-flash-exp',
+    model: 'gemini-2.5-flash-native-audio-preview-12-2025',
     responseModalities: ['AUDIO'],
     voiceName,
     systemInstruction: `Você é JARVIS, um assistente de IA avançado inspirado no assistente do Tony Stark.
