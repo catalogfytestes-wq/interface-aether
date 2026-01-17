@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, VolumeX, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
+import { Volume2, VolumeX, ChevronUp, Maximize2, Minimize2, Monitor, MonitorOff, Wifi, WifiOff } from 'lucide-react';
 import ParticleSphere from './ParticleSphere';
 import MinimizedMenu from './MinimizedMenu';
 import WindowControls from './WindowControls';
@@ -9,6 +9,7 @@ import MiniParticleSphere from './MiniParticleSphere';
 import useSoundEffects from '@/hooks/useSoundEffects';
 import useVoiceRecognition from '@/hooks/useVoiceRecognition';
 import useAudioLevel from '@/hooks/useAudioLevel';
+import { useGeminiVoiceAssistant } from '@/hooks/useGeminiVoiceAssistant';
 import { toast } from 'sonner';
 
 type SystemMode = 'idle' | 'listening' | 'processing' | 'success' | 'error';
@@ -40,23 +41,81 @@ const HUDOverlay = ({
   // Voice command callbacks
   const onWidgetCommand = useRef<(widget: string | null) => void>(() => {});
 
+  // ===== GEMINI VOICE ASSISTANT (AI que responde) =====
+  const geminiAssistant = useGeminiVoiceAssistant({
+    autoConnect: true,
+    onSpeakingChange: (speaking) => {
+      setIsTTSSpeaking(speaking);
+      if (speaking) {
+        setSystemMode('processing');
+      }
+    },
+    onConnectionChange: (connected) => {
+      if (connected) {
+        console.log('🤖 JARVIS Gemini conectado e pronto!');
+      }
+    },
+    onResponse: (text) => {
+      console.log('🤖 JARVIS respondeu:', text);
+    },
+    onError: (err) => {
+      console.error('🤖 JARVIS erro:', err);
+      toast.error('Erro na conexão com JARVIS');
+    },
+  });
+
+  // Comandos que devem ser enviados para o Gemini (IA responder)
+  const isAICommand = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    // Perguntas sobre a tela
+    if (lower.includes('o que você vê') || lower.includes('o que voce ve') ||
+        lower.includes('que você vê') || lower.includes('que voce ve') ||
+        lower.includes('descreva') || lower.includes('analise') ||
+        lower.includes('me ajuda') || lower.includes('me ajude') ||
+        lower.includes('explique') || lower.includes('como faço') ||
+        lower.includes('como faco') || lower.includes('qual é') ||
+        lower.includes('qual e') || lower.includes('quem é') ||
+        lower.includes('o que é isso') || lower.includes('o que e isso') ||
+        lower.includes('me fala') || lower.includes('me diz') ||
+        lower.includes('pode me') || lower.includes('você pode') ||
+        lower.includes('voce pode') || lower.includes('?')) {
+      return true;
+    }
+    return false;
+  };
+
   // Handle wake word detection
   const handleWakeWord = useCallback(() => {
     console.log('JARVIS wake word detected!');
     playSoundRef.current('activate');
     toast('🎤 JARVIS ativado! Ouvindo comandos...', {
-      description: 'Diga seu comando agora.',
+      description: geminiAssistant.isConnected 
+        ? 'Pergunte algo ou dê um comando.' 
+        : 'Conectando ao Gemini...',
     });
     // Expand from mini mode if in it
     if (isMiniMode) {
       setIsMiniMode(false);
     }
-  }, [isMiniMode]);
+    
+    // Auto-start screen share se ainda não estiver compartilhando
+    if (geminiAssistant.isConnected && !geminiAssistant.isScreenSharing) {
+      geminiAssistant.startScreenShare().catch(console.error);
+    }
+  }, [isMiniMode, geminiAssistant]);
 
   // Handle voice commands
   const handleFinalTranscript = useCallback((transcript: string) => {
     const lower = transcript.toLowerCase().trim();
     console.log('Final transcript:', lower);
+    
+    // Primeiro: verificar se é um comando para a IA responder
+    if (isAICommand(transcript) && geminiAssistant.isConnected) {
+      console.log('🤖 Enviando para Gemini:', transcript);
+      setSystemMode('processing');
+      geminiAssistant.sendVoiceCommand(transcript);
+      return;
+    }
     
     // Modo mini
     if (lower.includes('modo mini') || lower.includes('minimizar jarvis') || lower.includes('dormir')) {
@@ -66,14 +125,32 @@ const HUDOverlay = ({
       return;
     }
     
-    // Screen Agent / Compartilhar tela
-    if (lower.includes('ver minha tela') || lower.includes('veja minha tela') || lower.includes('compartilhar tela') || 
-        lower.includes('screen agent') || lower.includes('abrir tela') || lower.includes('veja a tela')) {
+    // Screen share control via voice
+    if (lower.includes('compartilhar tela') || lower.includes('ver minha tela') || 
+        lower.includes('veja minha tela') || lower.includes('começar compartilhamento')) {
+      playSoundRef.current('activate');
+      geminiAssistant.startScreenShare().then(() => {
+        toast.success('🖥️ Compartilhando tela com JARVIS');
+      }).catch(() => {
+        toast.error('Erro ao compartilhar tela');
+      });
+      return;
+    }
+    
+    if (lower.includes('parar de ver') || lower.includes('pare de ver') || 
+        lower.includes('parar compartilhamento') || lower.includes('fechar tela')) {
+      playSoundRef.current('click');
+      geminiAssistant.stopScreenShare();
+      toast('🖥️ Parei de ver sua tela');
+      return;
+    }
+    
+    // Screen Agent / Compartilhar tela (abre o painel)
+    if (lower.includes('screen agent') || lower.includes('abrir tela')) {
       playSoundRef.current('activate');
       onWidgetCommand.current('screenagent');
       toast('🖥️ Abrindo Screen Agent...');
-    } else if (lower.includes('parar de ver') || lower.includes('pare de ver') || lower.includes('fechar tela') ||
-               lower.includes('fechar screen') || lower.includes('parar compartilhamento')) {
+    } else if (lower.includes('fechar screen')) {
       playSoundRef.current('click');
       onWidgetCommand.current(null);
       toast('🖥️ Screen Agent fechado');
@@ -161,7 +238,13 @@ const HUDOverlay = ({
       playSoundRef.current('activate');
       toast('📋 Menu aberto');
     }
-  }, [toggleSound]);
+    // Se nenhum comando local matched e está conectado ao Gemini, envia para IA
+    else if (geminiAssistant.isConnected && transcript.length > 3) {
+      console.log('🤖 Comando não reconhecido, enviando para Gemini:', transcript);
+      setSystemMode('processing');
+      geminiAssistant.sendVoiceCommand(transcript);
+    }
+  }, [toggleSound, geminiAssistant]);
 
   const { 
     isListening, 
@@ -379,6 +462,43 @@ const HUDOverlay = ({
                 ? '👂 ESCUTANDO: "JARVIS"' 
                 : '🔇 CLIQUE PARA ATIVAR MICROFONE'}
           </span>
+          
+          {/* Gemini Connection & Screen Share Status */}
+          <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
+            <div className="flex items-center gap-1" title={geminiAssistant.isConnected ? 'Gemini conectado' : 'Gemini desconectado'}>
+              {geminiAssistant.isConnected ? (
+                <Wifi size={12} className="text-green-400" />
+              ) : geminiAssistant.isConnecting ? (
+                <Wifi size={12} className="text-yellow-400 animate-pulse" />
+              ) : (
+                <WifiOff size={12} className="text-red-400/50" />
+              )}
+            </div>
+            
+            {geminiAssistant.isConnected && (
+              <button
+                onClick={() => {
+                  if (geminiAssistant.isScreenSharing) {
+                    geminiAssistant.stopScreenShare();
+                    toast('🖥️ Parei de ver sua tela');
+                  } else {
+                    geminiAssistant.startScreenShare().then(() => {
+                      toast.success('🖥️ Compartilhando tela');
+                    });
+                  }
+                }}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-colors ${
+                  geminiAssistant.isScreenSharing 
+                    ? 'bg-cyan-500/20 text-cyan-400' 
+                    : 'bg-white/10 text-white/50 hover:text-white/80'
+                }`}
+                title={geminiAssistant.isScreenSharing ? 'Clique para parar compartilhamento' : 'Clique para compartilhar tela'}
+              >
+                {geminiAssistant.isScreenSharing ? <Monitor size={10} /> : <MonitorOff size={10} />}
+                <span>{geminiAssistant.isScreenSharing ? 'TELA' : 'VER'}</span>
+              </button>
+            )}
+          </div>
         </button>
 
         {/* Indicador temporário de palmas (1-3) */}
