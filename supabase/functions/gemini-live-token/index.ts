@@ -33,7 +33,8 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const {
-      model = 'gemini-2.5-flash-native-audio-preview-12-2025',
+      // Modelo padrão mais estável para BidiGenerateContent (Live)
+      model = 'gemini-2.0-flash',
       uses = 1,
       expireMinutes = 30,
       newSessionExpireMinutes = 2,
