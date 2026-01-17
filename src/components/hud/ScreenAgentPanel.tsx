@@ -11,9 +11,12 @@ import {
   Wifi,
   WifiOff,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { useGeminiScreenAgent } from '@/hooks/useGeminiScreenAgent';
+import { useJarvisTTS } from '@/hooks/useJarvisTTS';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -36,8 +39,27 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // TTS Hook para voz do JARVIS
+  const { speakAsync, isSpeaking, isConnected: ttsConnected } = useJarvisTTS();
+
+  const addMessage = (role: 'user' | 'assistant', content: string) => {
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      role,
+      content,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, newMessage]);
+    
+    // Se for resposta do assistente e voz está habilitada, fala
+    if (role === 'assistant' && voiceEnabled && content.trim()) {
+      speakAsync(content, { rate: 145 }); // Rate similar ao JARVIS
+    }
+  };
 
   const {
     state,
@@ -67,16 +89,6 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
       addMessage('assistant', `Erro: ${error.message}`);
     },
   });
-
-  const addMessage = (role: 'user' | 'assistant', content: string) => {
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      role,
-      content,
-      timestamp: new Date(),
-    };
-    setMessages(prev => [...prev, newMessage]);
-  };
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -167,12 +179,10 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   return (
     <AnimatePresence>
       <motion.div
-        // ALTERAÇÃO 1: Animação vindo da esquerda (negativo)
         initial={{ opacity: 0, x: -300 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -300 }}
-        // ALTERAÇÃO 2: Posição 'left-24' para ficar após a barra lateral
-        className={`fixed left-24 top-1/2 -translate-y-1/2 z-50 ${
+        className={`fixed left-64 top-1/2 -translate-y-1/2 z-40 ${
           isExpanded ? 'w-[500px] h-[80vh]' : 'w-[380px] h-[500px]'
         } flex flex-col rounded-lg border backdrop-blur-xl transition-all duration-300 ${
           transparentMode
@@ -195,6 +205,27 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Voice Toggle */}
+            <motion.button
+              onClick={() => {
+                onPlaySound?.('click');
+                setVoiceEnabled(!voiceEnabled);
+              }}
+              onMouseEnter={() => onPlaySound?.('hover')}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className={`p-1.5 rounded transition-colors ${
+                voiceEnabled 
+                  ? ttsConnected 
+                    ? 'text-cyan-400 hover:text-cyan-300' 
+                    : 'text-yellow-400 hover:text-yellow-300'
+                  : 'text-white/30 hover:text-white/50'
+              }`}
+              title={voiceEnabled ? (ttsConnected ? 'Voz JARVIS ativa' : 'Servidor Python offline') : 'Voz desativada'}
+            >
+              {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            </motion.button>
+            
             <motion.button
               onClick={() => setIsExpanded(!isExpanded)}
               onMouseEnter={() => onPlaySound?.('hover')}

@@ -3,7 +3,7 @@
 # Este é o código base do servidor Python que você deve rodar localmente.
 # 
 # INSTALAÇÃO:
-# pip install fastapi uvicorn python-multipart pyautogui pillow openai websockets
+# pip install fastapi uvicorn python-multipart pyautogui pillow openai websockets pyttsx3
 #
 # EXECUÇÃO:
 # uvicorn server:app --host 0.0.0.0 --port 5000 --reload
@@ -18,22 +18,27 @@ Módulos:
 - /actions - Cliques, digitação, atalhos
 - /planner - Planejamento de tarefas com IA
 - /agent - Agente conversacional completo
+- /tts - Síntese de voz estilo JARVIS com pyttsx3
 - /ws - WebSocket para comunicação em tempo real
 """
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import asyncio
 import json
 import base64
+import io
 from datetime import datetime
+
+# TTS Engine - pyttsx3
+import pyttsx3
 
 # Descomente conforme necessário:
 # import pyautogui
 # from PIL import Image
-# import io
 # from openai import OpenAI
 
 app = FastAPI(title="JARVIS Backend", version="1.0.0")
@@ -217,6 +222,174 @@ async def agent_chat_endpoint(request: AgentRequest):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+# ============= TTS MODULE (JARVIS VOICE) =============
+
+class TTSRequest(BaseModel):
+    text: str
+    rate: Optional[int] = 150  # Velocidade (padrão: 150 palavras/min, JARVIS: 140-160)
+    volume: Optional[float] = 1.0  # Volume (0.0 a 1.0)
+    voice_id: Optional[str] = None  # ID da voz (None = usa voz masculina padrão)
+
+# Inicializa o engine TTS globalmente
+tts_engine = None
+
+def get_tts_engine():
+    """Inicializa o engine TTS com configurações estilo JARVIS"""
+    global tts_engine
+    if tts_engine is None:
+        tts_engine = pyttsx3.init()
+        
+        # Configurações estilo JARVIS (Tony Stark's AI)
+        # Taxa de fala: 140-160 é ideal para voz de assistente
+        tts_engine.setProperty('rate', 150)
+        
+        # Volume máximo
+        tts_engine.setProperty('volume', 1.0)
+        
+        # Seleciona voz masculina (mais próxima do JARVIS)
+        voices = tts_engine.getProperty('voices')
+        for voice in voices:
+            # Tenta encontrar voz masculina em português ou inglês
+            if 'male' in voice.name.lower() or 'david' in voice.name.lower():
+                tts_engine.setProperty('voice', voice.id)
+                break
+            # Fallback para primeira voz disponível
+            elif 'portuguese' in voice.name.lower() or 'brazil' in voice.name.lower():
+                tts_engine.setProperty('voice', voice.id)
+                break
+    
+    return tts_engine
+
+@app.get("/tts/voices")
+async def list_voices():
+    """Lista todas as vozes disponíveis no sistema"""
+    try:
+        engine = pyttsx3.init()
+        voices = engine.getProperty('voices')
+        voice_list = []
+        for voice in voices:
+            voice_list.append({
+                "id": voice.id,
+                "name": voice.name,
+                "languages": voice.languages,
+                "gender": voice.gender
+            })
+        engine.stop()
+        return {"success": True, "voices": voice_list}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/tts/speak")
+async def speak_text(request: TTSRequest):
+    """Sintetiza texto em fala estilo JARVIS (não retorna áudio, apenas fala localmente)"""
+    try:
+        engine = get_tts_engine()
+        
+        # Aplica configurações personalizadas se fornecidas
+        if request.rate:
+            engine.setProperty('rate', request.rate)
+        if request.volume is not None:
+            engine.setProperty('volume', request.volume)
+        if request.voice_id:
+            engine.setProperty('voice', request.voice_id)
+        
+        # Fala o texto (bloqueante)
+        engine.say(request.text)
+        engine.runAndWait()
+        
+        return {
+            "success": True,
+            "message": "Texto falado com sucesso",
+            "text": request.text
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/tts/speak-async")
+async def speak_text_async(request: TTSRequest):
+    """Sintetiza texto em fala de forma assíncrona (não bloqueia)"""
+    try:
+        # Executa em thread separada para não bloquear
+        import threading
+        
+        def speak_in_thread():
+            engine = pyttsx3.init()
+            if request.rate:
+                engine.setProperty('rate', request.rate)
+            if request.volume is not None:
+                engine.setProperty('volume', request.volume)
+            if request.voice_id:
+                engine.setProperty('voice', request.voice_id)
+            else:
+                # Configuração padrão JARVIS
+                voices = engine.getProperty('voices')
+                for voice in voices:
+                    if 'male' in voice.name.lower() or 'david' in voice.name.lower():
+                        engine.setProperty('voice', voice.id)
+                        break
+            
+            engine.say(request.text)
+            engine.runAndWait()
+            engine.stop()
+        
+        thread = threading.Thread(target=speak_in_thread)
+        thread.start()
+        
+        return {
+            "success": True,
+            "message": "TTS iniciado em background",
+            "text": request.text
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/tts/generate-audio")
+async def generate_audio(request: TTSRequest):
+    """Gera áudio WAV e retorna como base64 (para reprodução no frontend)"""
+    try:
+        import tempfile
+        import os
+        
+        engine = pyttsx3.init()
+        
+        # Configurações
+        if request.rate:
+            engine.setProperty('rate', request.rate)
+        if request.volume is not None:
+            engine.setProperty('volume', request.volume)
+        if request.voice_id:
+            engine.setProperty('voice', request.voice_id)
+        else:
+            voices = engine.getProperty('voices')
+            for voice in voices:
+                if 'male' in voice.name.lower() or 'david' in voice.name.lower():
+                    engine.setProperty('voice', voice.id)
+                    break
+        
+        # Salva em arquivo temporário
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+            temp_path = temp_file.name
+        
+        engine.save_to_file(request.text, temp_path)
+        engine.runAndWait()
+        engine.stop()
+        
+        # Lê o arquivo e converte para base64
+        with open(temp_path, 'rb') as audio_file:
+            audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
+        
+        # Remove arquivo temporário
+        os.remove(temp_path)
+        
+        return {
+            "success": True,
+            "audio_base64": audio_base64,
+            "format": "wav",
+            "text": request.text
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 # ============= WEBSOCKET =============
 
 class ConnectionManager:
@@ -244,7 +417,27 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             message = json.loads(data)
             
-            # Processa a mensagem
+            # Se for requisição de TTS via WebSocket
+            if message.get("type") == "tts":
+                text = message.get("text", "")
+                if text:
+                    import threading
+                    def speak():
+                        engine = pyttsx3.init()
+                        engine.setProperty('rate', message.get("rate", 150))
+                        engine.say(text)
+                        engine.runAndWait()
+                        engine.stop()
+                    threading.Thread(target=speak).start()
+                    
+                    await websocket.send_json({
+                        "type": "tts_started",
+                        "text": text,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    continue
+            
+            # Processa outras mensagens
             response = {
                 "type": "response",
                 "module": message.get("module", "system"),
@@ -264,7 +457,7 @@ async def websocket_endpoint(websocket: WebSocket):
 async def health_check():
     return {
         "status": "healthy",
-        "modules": ["vision", "actions", "planner", "agent"],
+        "modules": ["vision", "actions", "planner", "agent", "tts"],
         "timestamp": datetime.now().isoformat()
     }
 
