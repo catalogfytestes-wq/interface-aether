@@ -63,25 +63,25 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
     }
   }, [onWidgetCommandRef, isOpen]);
 
-  const sections = [
+  const sections: { title: string; items: { id: WidgetType; icon: typeof Clock; label: string; highlight?: boolean }[] }[] = [
     {
       title: 'Widgets',
       items: [
-        { id: 'screenagent' as WidgetType, icon: MonitorPlay, label: 'Screen Agent', highlight: true },
-        { id: 'clock' as WidgetType, icon: Clock, label: 'Relógio' },
-        { id: 'weather' as WidgetType, icon: Cloud, label: 'Clima' },
-        { id: 'calendar' as WidgetType, icon: Calendar, label: 'Calendário' },
-        { id: 'music' as WidgetType, icon: Music, label: 'Música' },
-        { id: 'radar' as WidgetType, icon: Radio, label: 'Radar' },
+        { id: 'screenagent', icon: MonitorPlay, label: 'Screen Agent', highlight: true },
+        { id: 'clock', icon: Clock, label: 'Relógio' },
+        { id: 'weather', icon: Cloud, label: 'Clima' },
+        { id: 'calendar', icon: Calendar, label: 'Calendário' },
+        { id: 'music', icon: Music, label: 'Música' },
+        { id: 'radar', icon: Radio, label: 'Radar' },
       ],
     },
     {
       title: 'Sistema',
       items: [
-        { id: 'diagnostics' as WidgetType, icon: Activity, label: 'Diagnóstico' },
-        { id: 'notifications' as WidgetType, icon: Bell, label: 'Alertas' },
-        { id: 'network' as WidgetType, icon: Wifi, label: 'Rede' },
-        { id: 'battery' as WidgetType, icon: Battery, label: 'Energia' },
+        { id: 'diagnostics', icon: Activity, label: 'Diagnóstico' },
+        { id: 'notifications', icon: Bell, label: 'Alertas' },
+        { id: 'network', icon: Wifi, label: 'Rede' },
+        { id: 'battery', icon: Battery, label: 'Energia' },
       ],
     },
   ];
@@ -248,45 +248,60 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.2 }}
-            className="absolute left-16 top-1/2 -translate-y-1/2 flex flex-col gap-2 max-h-[80vh] overflow-y-auto pr-1"
+            className="absolute left-16 top-1/2 -translate-y-1/2 flex flex-col gap-2 max-h-[80vh] overflow-y-auto hud-scrollbar pr-2"
           >
-            {menuItems.map((item, index) => (
-              <motion.button
-                key={item.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ delay: index * 0.03 }}
-                onClick={() => handleWidgetSelect(item.id)}
-                onMouseEnter={() => onPlaySound?.('hover')}
-                className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
-                  activeWidget === item.id
-                    ? transparentMode 
-                      ? 'border-white/60 bg-white/20 backdrop-blur-md text-white'
-                      : 'border-white/60 bg-white/10 text-white'
-                    : 'highlight' in item && item.highlight
-                      ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:text-cyan-300 hover:border-cyan-500/50'
-                      : transparentMode
-                        ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/70 hover:text-white hover:border-white/50'
-                        : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
-                }`}
-                whileHover={{ scale: 1.05, x: 5 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <item.icon size={16} />
-                <span className="text-xs font-light tracking-wider whitespace-nowrap">
-                  {item.label}
+            {sections.map((section, sectionIndex) => (
+              <div key={section.title} className="flex flex-col gap-1">
+                <span className={`text-[10px] uppercase tracking-widest px-2 py-1 ${transparentMode ? 'text-white/40' : 'text-white/30'}`}>
+                  {section.title}
                 </span>
-                {'highlight' in item && item.highlight && (
-                  <span className="px-1.5 py-0.5 rounded text-[8px] bg-cyan-500/20 text-cyan-400 font-medium">
-                    NOVO
-                  </span>
+                {section.items.map((item, itemIndex) => (
+                  <motion.button
+                    key={item.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ delay: (sectionIndex * section.items.length + itemIndex) * 0.03 }}
+                    onClick={() => handleWidgetSelect(item.id)}
+                    onMouseEnter={() => onPlaySound?.('hover')}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
+                      activeWidget === item.id
+                        ? transparentMode 
+                          ? 'border-white/60 bg-white/20 backdrop-blur-md text-white'
+                          : 'border-white/60 bg-white/10 text-white'
+                        : item.highlight
+                          ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:text-cyan-300 hover:border-cyan-500/50'
+                          : transparentMode
+                            ? 'border-white/30 bg-white/10 backdrop-blur-md text-white/70 hover:text-white hover:border-white/50'
+                            : 'border-white/20 bg-black/50 text-white/50 hover:text-white hover:border-white/40'
+                    }`}
+                    whileHover={{ scale: 1.05, x: 5 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <item.icon size={16} />
+                    <span className="text-xs font-light tracking-wider whitespace-nowrap">
+                      {item.label}
+                    </span>
+                    {item.highlight && (
+                      <span className="px-1.5 py-0.5 rounded text-[8px] bg-cyan-500/20 text-cyan-400 font-medium">
+                        NOVO
+                      </span>
+                    )}
+                  </motion.button>
+                ))}
+                {sectionIndex < sections.length - 1 && (
+                  <div className={`my-1 border-t ${transparentMode ? 'border-white/15' : 'border-white/10'}`} />
                 )}
-              </motion.button>
+              </div>
             ))}
             
-            {/* Divider */}
-            <div className={`my-2 border-t ${transparentMode ? 'border-white/20' : 'border-white/10'}`} />
+            {/* Divider before account section */}
+            <div className={`my-1 border-t ${transparentMode ? 'border-white/20' : 'border-white/10'}`} />
+            
+            {/* Account section title */}
+            <span className={`text-[10px] uppercase tracking-widest px-2 py-1 ${transparentMode ? 'text-white/40' : 'text-white/30'}`}>
+              Conta
+            </span>
             
             {/* User actions */}
             {user ? (
@@ -295,7 +310,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                   transition={{ delay: 0.25 }}
+                  transition={{ delay: 0.25 }}
                   onClick={() => handleUserAction('profile')}
                   onMouseEnter={() => onPlaySound?.('hover')}
                   className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
@@ -313,7 +328,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                  transition={{ delay: (menuItems.length + 1) * 0.03 }}
+                  transition={{ delay: 0.28 }}
                   onClick={() => handleUserAction('plans')}
                   onMouseEnter={() => onPlaySound?.('hover')}
                   className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
@@ -331,7 +346,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                  transition={{ delay: (menuItems.length + 2) * 0.03 }}
+                  transition={{ delay: 0.31 }}
                   onClick={() => handleUserAction('logout')}
                   onMouseEnter={() => onPlaySound?.('hover')}
                   className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all border-red-500/30 text-red-400/70 hover:text-red-400 hover:border-red-500/50 ${
@@ -349,7 +364,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                transition={{ delay: menuItems.length * 0.03 }}
+                transition={{ delay: 0.25 }}
                 onClick={() => handleUserAction('login')}
                 onMouseEnter={() => onPlaySound?.('hover')}
                 className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all border-primary/30 text-primary/70 hover:text-primary hover:border-primary/50 ${
