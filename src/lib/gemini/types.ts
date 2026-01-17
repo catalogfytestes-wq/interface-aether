@@ -21,12 +21,15 @@ export interface GeminiLiveConfig {
 
 // Token response from edge function
 export interface GeminiTokenResponse {
-  token: string;
+  token?: string;
+  apiKey?: string; // Used in direct mode when ephemeral tokens aren't available
   expireTime: string;
   newSessionExpireTime: string;
   model: string;
   wsUrl: string;
+  mode: 'ephemeral' | 'direct'; // ephemeral = using token, direct = using API key
   error?: string;
+  note?: string;
 }
 
 // WebSocket message types
