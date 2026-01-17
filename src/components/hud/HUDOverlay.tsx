@@ -48,19 +48,30 @@ const HUDOverlay = ({
       setIsTTSSpeaking(speaking);
       if (speaking) {
         setSystemMode('processing');
+      } else {
+        setSystemMode('idle');
       }
     },
     onConnectionChange: (connected) => {
       if (connected) {
         console.log('🤖 JARVIS Gemini conectado e pronto!');
+        toast.success('JARVIS conectado!');
+      } else {
+        console.log('🤖 JARVIS Gemini desconectado');
       }
     },
     onResponse: (text) => {
       console.log('🤖 JARVIS respondeu:', text);
+      setSystemMode('success');
+      // Volta para idle após 2 segundos
+      setTimeout(() => setSystemMode('idle'), 2000);
     },
     onError: (err) => {
       console.error('🤖 JARVIS erro:', err);
-      toast.error('Erro na conexão com JARVIS');
+      toast.error('Erro na conexão com JARVIS: ' + err.message);
+      setSystemMode('error');
+      // Volta para idle após 3 segundos
+      setTimeout(() => setSystemMode('idle'), 3000);
     },
   });
 

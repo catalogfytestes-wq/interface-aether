@@ -44,9 +44,9 @@ interface UseGeminiLiveReturn {
 }
 
 const DEFAULT_CONFIG: GeminiLiveConfig = {
-  // Modelo experimental para Live API (BidiGenerateContent)
-  // Ref: https://ai.google.dev/gemini-api/docs/live-guide
-  model: 'models/gemini-2.0-flash-exp',
+  // Modelo oficial para Live API (BidiGenerateContent) - Janeiro 2026
+  // Ref: https://ai.google.dev/gemini-api/docs/live
+  model: 'gemini-2.5-flash-native-audio-preview-12-2025',
   responseModalities: ['AUDIO'],
   voiceName: 'Kore',
   systemInstruction: `Você é JARVIS, um assistente de IA avançado que pode ver a tela do usuário em tempo real.
@@ -218,18 +218,15 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     const normalize = (v?: string) => (v || '').trim();
 
         // Model fallbacks para Gemini Live API (BidiGenerateContent)
-        // Ref: https://ai.google.dev/gemini-api/docs/live-guide
-        // Usando gemini-2.0-flash-exp como modelo principal (suporta BidiGenerateContent)
+        // Ref: https://ai.google.dev/gemini-api/docs/live
+        // Usando gemini-2.5-flash-native-audio-preview como modelo principal
         const seed = normalize(config.model);
         const baseCandidates = [
           // User-selected model first
           seed,
-          // Modelo experimental com suporte a BidiGenerateContent
-          'models/gemini-2.0-flash-exp',
-          'gemini-2.0-flash-exp',
-          // Fallbacks alternativos
-          'models/gemini-2.0-flash-live-001',
-          'gemini-2.0-flash-live-001',
+          // Modelo oficial para Live API - Janeiro 2026
+          'gemini-2.5-flash-native-audio-preview-12-2025',
+          'models/gemini-2.5-flash-native-audio-preview-12-2025',
         ].filter(Boolean);
 
     const modelCandidates = Array.from(new Set(baseCandidates.map(normalize).filter(Boolean)));
@@ -283,103 +280,46 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
-        // Build setup message (RADICAL / minimal) for maximum compatibility.
-        // When using models/gemini-2.0-flash-exp, send ONLY what is required.
-        // Desired shape:
-        // {
-        //   "setup": {
-        //     "model": "models/gemini-2.0-flash-exp",
-        //     "generationConfig": {
-        //       "responseModalities": ["AUDIO"],
-        //       "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Kore" } } }
-        //     }
-        //   }
-        // }
-        const normalizedModel = (modelToTry || '').startsWith('models/') ? modelToTry : `models/${modelToTry}`;
-        const isFlashExp = normalizedModel === 'models/gemini-2.0-flash-exp';
+        // Build setup message for Gemini Live API
+        // Format according to: https://ai.google.dev/gemini-api/docs/live
+        const voiceName = config.voiceName || 'Kore';
+        
+        // Build generationConfig with proper structure
+        const generationConfig: Record<string, unknown> = {
+          responseModalities: config.responseModalities || ['AUDIO'],
+        };
 
-        let setupMessage: GeminiSetupMessage;
-
-        if (isFlashExp) {
-          const voiceName = config.voiceName || 'Kore';
-
-          // Build setup payload for gemini-2.0-flash-exp
-          // IMPORTANT: Include systemInstruction for JARVIS persona
-          const setupPayload: Record<string, unknown> = {
-            model: 'models/gemini-2.0-flash-exp',
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: {
-                    voiceName,
-                  },
-                },
+        // Add speech config for voice
+        if (voiceName) {
+          generationConfig.speechConfig = {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName,
               },
             },
           };
+        }
 
-          // Add system instruction for JARVIS persona
-          if (config.systemInstruction) {
-            setupPayload.systemInstruction = {
-              parts: [{ text: config.systemInstruction }],
-            };
-          }
+        if (config.temperature !== undefined) generationConfig.temperature = config.temperature;
+        if (config.topK !== undefined) generationConfig.topK = config.topK;
+        if (config.topP !== undefined) generationConfig.topP = config.topP;
 
-          setupMessage = {
-            setup: setupPayload as GeminiSetupMessage['setup'],
-          } as GeminiSetupMessage;
-        } else {
-          // Default/other models: keep the previous robust structure
-          const generationConfig: Record<string, unknown> = {
-            responseModalities: config.responseModalities || ['AUDIO', 'TEXT'],
-          };
+        // Build setup payload
+        const setupPayload: Record<string, unknown> = {
+          model: modelToTry,
+          generationConfig,
+        };
 
-          if (config.temperature !== undefined) generationConfig.temperature = config.temperature;
-          if (config.topK !== undefined) generationConfig.topK = config.topK;
-          if (config.topP !== undefined) generationConfig.topP = config.topP;
-
-          if (config.voiceName) {
-            generationConfig.speechConfig = {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: config.voiceName,
-                },
-              },
-            };
-          }
-
-          if (config.thinkingBudget !== undefined) {
-            generationConfig.thinkingConfig = {
-              thinkingBudget: config.thinkingBudget,
-            };
-          }
-
-          const setupPayload: Record<string, unknown> = {
-            model: modelToTry,
-            generationConfig,
-          };
-
-          if (config.systemInstruction) {
-            setupPayload.systemInstruction = {
-              parts: [{ text: config.systemInstruction }],
-            };
-          }
-
-          if (config.enableAffectiveDialog) {
-            setupPayload.enableAffectiveDialog = true;
-          }
-
-          if (config.proactiveAudio) {
-            setupPayload.proactivity = {
-              proactiveAudio: true,
-            };
-          }
-
-          setupMessage = {
-            setup: setupPayload as GeminiSetupMessage['setup'],
+        // Add system instruction for JARVIS persona
+        if (config.systemInstruction) {
+          setupPayload.systemInstruction = {
+            parts: [{ text: config.systemInstruction }],
           };
         }
+
+        const setupMessage: GeminiSetupMessage = {
+          setup: setupPayload as GeminiSetupMessage['setup'],
+        };
 
         try {
           ws.send(JSON.stringify(setupMessage));
