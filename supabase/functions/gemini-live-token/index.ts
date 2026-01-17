@@ -68,7 +68,7 @@ serve(async (req) => {
     console.log('Creating ephemeral token with request:', JSON.stringify(tokenRequest));
 
     // Request ephemeral token from Gemini API v1alpha
-    // The correct endpoint for auth tokens
+    // Note: WebSocket Live API endpoint is v1beta (see https://ai.google.dev/api/live)
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1alpha/authTokens?key=${GEMINI_API_KEY}`,
       {
@@ -88,7 +88,7 @@ serve(async (req) => {
       // If the authTokens endpoint doesn't work, fall back to direct API key mode
       // This allows the client to connect directly with the API key
       console.log('Ephemeral token creation failed, using direct API key mode');
-      
+
       return new Response(
         JSON.stringify({
           // Return the API key directly for WebSocket connection
@@ -97,13 +97,14 @@ serve(async (req) => {
           expireTime,
           newSessionExpireTime,
           model,
-          wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent`,
+          // IMPORTANT: Live WebSocket endpoint is v1beta
+          wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`,
           mode: 'direct', // Indicates direct API key mode
           note: 'Ephemeral tokens not available, using direct API key connection'
         }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -125,7 +126,8 @@ serve(async (req) => {
         expireTime,
         newSessionExpireTime,
         model,
-        wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent`,
+        // IMPORTANT: Live WebSocket endpoint is v1beta
+        wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`,
         mode: 'ephemeral', // Indicates ephemeral token mode
       }),
       { 

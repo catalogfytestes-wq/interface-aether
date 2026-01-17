@@ -63,17 +63,27 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
     }
   }, [onWidgetCommandRef, isOpen]);
 
-  const menuItems = [
-    { id: 'screenagent' as WidgetType, icon: MonitorPlay, label: 'Screen Agent', highlight: true },
-    { id: 'clock' as WidgetType, icon: Clock, label: 'Relógio' },
-    { id: 'weather' as WidgetType, icon: Cloud, label: 'Clima' },
-    { id: 'calendar' as WidgetType, icon: Calendar, label: 'Calendário' },
-    { id: 'music' as WidgetType, icon: Music, label: 'Música' },
-    { id: 'radar' as WidgetType, icon: Radio, label: 'Radar' },
-    { id: 'diagnostics' as WidgetType, icon: Activity, label: 'Sistema' },
-    { id: 'notifications' as WidgetType, icon: Bell, label: 'Alertas' },
-    { id: 'network' as WidgetType, icon: Wifi, label: 'Rede' },
-    { id: 'battery' as WidgetType, icon: Battery, label: 'Energia' },
+  const sections = [
+    {
+      title: 'Widgets',
+      items: [
+        { id: 'screenagent' as WidgetType, icon: MonitorPlay, label: 'Screen Agent', highlight: true },
+        { id: 'clock' as WidgetType, icon: Clock, label: 'Relógio' },
+        { id: 'weather' as WidgetType, icon: Cloud, label: 'Clima' },
+        { id: 'calendar' as WidgetType, icon: Calendar, label: 'Calendário' },
+        { id: 'music' as WidgetType, icon: Music, label: 'Música' },
+        { id: 'radar' as WidgetType, icon: Radio, label: 'Radar' },
+      ],
+    },
+    {
+      title: 'Sistema',
+      items: [
+        { id: 'diagnostics' as WidgetType, icon: Activity, label: 'Diagnóstico' },
+        { id: 'notifications' as WidgetType, icon: Bell, label: 'Alertas' },
+        { id: 'network' as WidgetType, icon: Wifi, label: 'Rede' },
+        { id: 'battery' as WidgetType, icon: Battery, label: 'Energia' },
+      ],
+    },
   ];
 
   const handleToggle = () => {
@@ -285,7 +295,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                  transition={{ delay: menuItems.length * 0.03 }}
+                   transition={{ delay: 0.25 }}
                   onClick={() => handleUserAction('profile')}
                   onMouseEnter={() => onPlaySound?.('hover')}
                   className={`flex items-center gap-3 px-3 py-2 rounded-full border transition-all ${
