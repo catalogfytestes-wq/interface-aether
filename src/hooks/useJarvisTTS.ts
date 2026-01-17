@@ -19,6 +19,8 @@ interface UseJarvisTTSReturn {
 
 const JARVIS_SERVER_URL = 'http://localhost:5000';
 
+// Fallback para usar o endpoint síncrono se o assíncrono não existir
+
 export const useJarvisTTS = (): UseJarvisTTSReturn => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -93,13 +95,16 @@ export const useJarvisTTS = (): UseJarvisTTSReturn => {
     }
   }, []);
 
-  // Fala texto de forma assíncrona (não espera)
+  // Fala texto de forma assíncrona (usa /tts/speak que fala no servidor)
   const speakAsync = useCallback(async (text: string, options?: TTSOptions) => {
     setError(null);
     setIsSpeaking(true);
     
+    console.log('[TTS] Iniciando speakAsync com texto:', text.substring(0, 50));
+    
     try {
-      const response = await fetch(`${JARVIS_SERVER_URL}/tts/speak-async`, {
+      // Usa o endpoint /tts/speak que toca no servidor Python
+      const response = await fetch(`${JARVIS_SERVER_URL}/tts/speak`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -110,23 +115,24 @@ export const useJarvisTTS = (): UseJarvisTTSReturn => {
         })
       });
       
+      console.log('[TTS] Resposta recebida, status:', response.status);
+      
       const data = await response.json();
+      console.log('[TTS] Dados da resposta:', data);
       
       if (!data.success) {
         throw new Error(data.error || 'Erro no TTS');
       }
       
       setIsConnected(true);
-      
-      // Aguarda um tempo estimado baseado no texto
-      const estimatedDuration = (text.length / 15) * 1000; // ~15 chars/seg
-      setTimeout(() => setIsSpeaking(false), estimatedDuration);
+      setIsSpeaking(false);
+      console.log('[TTS] Fala concluída com sucesso');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(message);
       setIsConnected(false);
       setIsSpeaking(false);
-      console.error('TTS Error:', message);
+      console.error('[TTS] Erro:', message);
     }
   }, []);
 
