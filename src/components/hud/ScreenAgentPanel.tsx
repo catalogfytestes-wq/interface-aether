@@ -14,12 +14,11 @@ import {
   Minimize2,
   Volume2,
   VolumeX,
-  MessageCircle,
   Wrench,
   RefreshCcw,
 } from 'lucide-react';
 import { useGeminiScreenAgent } from '@/hooks/useGeminiScreenAgent';
-import { useJarvisTTS } from '@/hooks/useJarvisTTS';
+import { useGeminiAudioPlayer } from '@/hooks/useGeminiAudioPlayer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -68,13 +67,18 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // TTS Hook para voz do JARVIS
-  const { speakAsync, isSpeaking, isConnected: ttsConnected } = useJarvisTTS();
+  // Gemini Audio Player - usa áudio nativo da API Live
+  const audioPlayer = useGeminiAudioPlayer({
+    enabled: voiceEnabled,
+    onPlayStart: () => console.log('[GeminiAudio] Iniciando reprodução'),
+    onPlayEnd: () => console.log('[GeminiAudio] Reprodução finalizada'),
+    onError: (err) => console.error('[GeminiAudio] Erro:', err),
+  });
 
-  // Notificar mudanças no estado de TTS
+  // Notificar mudanças no estado de áudio
   useEffect(() => {
-    onTTSSpeakingChange?.(isSpeaking);
-  }, [isSpeaking, onTTSSpeakingChange]);
+    onTTSSpeakingChange?.(audioPlayer.isPlaying);
+  }, [audioPlayer.isPlaying, onTTSSpeakingChange]);
 
   const addMessage = (role: 'user' | 'assistant', content: string) => {
     const newMessage: Message = {
@@ -84,24 +88,7 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, newMessage]);
-    
-    // Se for resposta do assistente e voz está habilitada, fala
-    if (role === 'assistant' && content.trim()) {
-      console.log('[TTS DEBUG] Resposta do assistente recebida:', content.substring(0, 50));
-      console.log('[TTS DEBUG] voiceEnabled:', voiceEnabled);
-      console.log('[TTS DEBUG] ttsConnected:', ttsConnected);
-      
-      if (voiceEnabled) {
-        console.log('[TTS DEBUG] Tentando falar:', content);
-        speakAsync(content, { rate: 145 }).then(() => {
-          console.log('[TTS DEBUG] speakAsync retornou com sucesso');
-        }).catch((err) => {
-          console.error('[TTS DEBUG] Erro no speakAsync:', err);
-        });
-      } else {
-        console.log('[TTS DEBUG] Voz desabilitada, não falando');
-      }
-    }
+    // Nota: O áudio é reproduzido automaticamente via onAudioResponse no hook
   };
 
   const modelPresets = useMemo(
@@ -148,6 +135,10 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
       if (isFinal && text.trim()) {
         addMessage('assistant', text);
       }
+    },
+    onAudioResponse: (audioBase64) => {
+      // Envia áudio da API Gemini Live para o player nativo
+      audioPlayer.queueAudio(audioBase64);
     },
     onWsEvent: (evt) => {
       const when = new Date(evt.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -325,44 +316,32 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
             <motion.button
               onClick={() => {
                 onPlaySound?.('click');
-                setVoiceEnabled(!voiceEnabled);
+                const newEnabled = !voiceEnabled;
+                setVoiceEnabled(newEnabled);
+                audioPlayer.setMuted(!newEnabled);
               }}
               onMouseEnter={() => onPlaySound?.('hover')}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className={`p-1.5 rounded transition-colors ${
                 voiceEnabled 
-                  ? ttsConnected 
-                    ? 'text-cyan-400 hover:text-cyan-300' 
-                    : 'text-yellow-400 hover:text-yellow-300'
+                  ? 'text-cyan-400 hover:text-cyan-300' 
                   : 'text-white/30 hover:text-white/50'
               }`}
-              title={voiceEnabled ? (ttsConnected ? 'Voz JARVIS ativa' : 'Servidor Python offline') : 'Voz desativada'}
+              title={voiceEnabled ? 'Áudio Gemini ativo' : 'Áudio desativado'}
             >
               {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
             </motion.button>
 
-            {/* Test Voice Button */}
-            <motion.button
-              onClick={() => {
-                onPlaySound?.('click');
-                speakAsync('Olá, eu sou JARVIS, seu assistente virtual. Estou pronto para ajudar.', { rate: 145 });
-              }}
-              onMouseEnter={() => onPlaySound?.('hover')}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className={`p-1.5 rounded transition-colors ${
-                ttsConnected 
-                  ? isSpeaking
-                    ? 'text-green-400 animate-pulse'
-                    : 'text-cyan-400 hover:text-cyan-300'
-                  : 'text-white/30 cursor-not-allowed'
-              }`}
-              title={ttsConnected ? (isSpeaking ? 'Falando...' : 'Testar voz') : 'Servidor Python offline'}
-              disabled={!ttsConnected}
-            >
-              <MessageCircle size={14} />
-            </motion.button>
+            {/* Audio Queue Indicator */}
+            {audioPlayer.isPlaying && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-500/20 text-green-400">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] font-mono">
+                  {audioPlayer.queueLength > 0 ? `+${audioPlayer.queueLength}` : 'PLAYING'}
+                </span>
+              </div>
+            )}
             
             <motion.button
               onClick={() => setIsExpanded(!isExpanded)}
