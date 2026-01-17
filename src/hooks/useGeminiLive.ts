@@ -283,71 +283,92 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
-        // Build setup message following official Gemini Live API format
-        // Ref: https://ai.google.dev/gemini-api/docs/live-guide
-        // All config options go inside generationConfig, NOT at root level
-        const generationConfig: Record<string, unknown> = {
-          responseModalities: config.responseModalities || ['AUDIO', 'TEXT'],
-        };
+        // Build setup message (RADICAL / minimal) for maximum compatibility.
+        // When using models/gemini-2.0-flash-exp, send ONLY what is required.
+        // Desired shape:
+        // {
+        //   "setup": {
+        //     "model": "models/gemini-2.0-flash-exp",
+        //     "generationConfig": {
+        //       "responseModalities": ["AUDIO"],
+        //       "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Kore" } } }
+        //     }
+        //   }
+        // }
+        const normalizedModel = (modelToTry || '').startsWith('models/') ? modelToTry : `models/${modelToTry}`;
+        const isFlashExp = normalizedModel === 'models/gemini-2.0-flash-exp';
 
-        // Add optional generation params
-        if (config.temperature !== undefined) {
-          generationConfig.temperature = config.temperature;
-        }
-        if (config.topK !== undefined) {
-          generationConfig.topK = config.topK;
-        }
-        if (config.topP !== undefined) {
-          generationConfig.topP = config.topP;
-        }
+        let setupMessage: GeminiSetupMessage;
 
-        // Add voice configuration (speechConfig) - INSIDE generationConfig
-        // Ref: speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
-        if (config.voiceName) {
-          generationConfig.speechConfig = {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: config.voiceName,
+        if (isFlashExp) {
+          const voiceName = config.voiceName || 'Kore';
+
+          setupMessage = {
+            setup: {
+              model: 'models/gemini-2.0-flash-exp',
+              generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: {
+                      voiceName,
+                    },
+                  },
+                },
               },
             },
+          } as GeminiSetupMessage;
+        } else {
+          // Default/other models: keep the previous robust structure
+          const generationConfig: Record<string, unknown> = {
+            responseModalities: config.responseModalities || ['AUDIO', 'TEXT'],
+          };
+
+          if (config.temperature !== undefined) generationConfig.temperature = config.temperature;
+          if (config.topK !== undefined) generationConfig.topK = config.topK;
+          if (config.topP !== undefined) generationConfig.topP = config.topP;
+
+          if (config.voiceName) {
+            generationConfig.speechConfig = {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: config.voiceName,
+                },
+              },
+            };
+          }
+
+          if (config.thinkingBudget !== undefined) {
+            generationConfig.thinkingConfig = {
+              thinkingBudget: config.thinkingBudget,
+            };
+          }
+
+          const setupPayload: Record<string, unknown> = {
+            model: modelToTry,
+            generationConfig,
+          };
+
+          if (config.systemInstruction) {
+            setupPayload.systemInstruction = {
+              parts: [{ text: config.systemInstruction }],
+            };
+          }
+
+          if (config.enableAffectiveDialog) {
+            setupPayload.enableAffectiveDialog = true;
+          }
+
+          if (config.proactiveAudio) {
+            setupPayload.proactivity = {
+              proactiveAudio: true,
+            };
+          }
+
+          setupMessage = {
+            setup: setupPayload as GeminiSetupMessage['setup'],
           };
         }
-
-        // Add thinking budget (thinkingConfig) - INSIDE generationConfig
-        if (config.thinkingBudget !== undefined) {
-          generationConfig.thinkingConfig = {
-            thinkingBudget: config.thinkingBudget,
-          };
-        }
-
-        // Build the setup payload
-        const setupPayload: Record<string, unknown> = {
-          model: modelToTry,
-          generationConfig,
-        };
-
-        // Add system instruction at root level
-        if (config.systemInstruction) {
-          setupPayload.systemInstruction = {
-            parts: [{ text: config.systemInstruction }],
-          };
-        }
-
-        // Add affective dialog (v1alpha only, at root level of config)
-        if (config.enableAffectiveDialog) {
-          setupPayload.enableAffectiveDialog = true;
-        }
-
-        // Add proactive audio (v1alpha only, at root level of config)
-        if (config.proactiveAudio) {
-          setupPayload.proactivity = {
-            proactiveAudio: true,
-          };
-        }
-
-        const setupMessage: GeminiSetupMessage = {
-          setup: setupPayload as GeminiSetupMessage['setup'],
-        };
 
         try {
           ws.send(JSON.stringify(setupMessage));
