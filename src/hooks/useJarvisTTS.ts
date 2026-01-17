@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 interface TTSOptions {
   rate?: number;
@@ -24,19 +24,40 @@ export const useJarvisTTS = (): UseJarvisTTSReturn => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const checkIntervalRef = useRef<number | null>(null);
 
   // Verifica conexão com servidor Python
   const checkConnection = useCallback(async () => {
     try {
-      const response = await fetch(`${JARVIS_SERVER_URL}/health`);
+      const response = await fetch(`${JARVIS_SERVER_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(2000), // 2 second timeout
+      });
       const data = await response.json();
-      setIsConnected(data.status === 'healthy' && data.modules?.includes('tts'));
-      return data.status === 'healthy';
+      const connected = data.status === 'healthy' && data.modules?.includes('tts');
+      setIsConnected(connected);
+      return connected;
     } catch {
       setIsConnected(false);
       return false;
     }
   }, []);
+
+  // Check connection on mount and periodically
+  useEffect(() => {
+    checkConnection();
+    
+    // Check every 5 seconds
+    checkIntervalRef.current = window.setInterval(() => {
+      checkConnection();
+    }, 5000);
+
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+      }
+    };
+  }, [checkConnection]);
 
   // Fala texto de forma síncrona (espera terminar)
   const speak = useCallback(async (text: string, options?: TTSOptions) => {

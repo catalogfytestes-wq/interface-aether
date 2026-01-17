@@ -46,7 +46,7 @@ Quando o usuário compartilhar a tela, analise o conteúdo e ofereça ajuda cont
 export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLiveReturn {
   const {
     config = DEFAULT_CONFIG,
-    autoReconnect = true,
+    autoReconnect = false, // Disabled by default to prevent reconnect loops
     onTranscript,
     onResponse,
     onAudio,
@@ -69,6 +69,9 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   const tokenRef = useRef<GeminiTokenResponse | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const responseBufferRef = useRef<string>('');
+  const isConnectingRef = useRef<boolean>(false);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 3;
 
   // Update state and notify
   const updateState = useCallback((updates: Partial<GeminiLiveState>) => {
@@ -165,11 +168,18 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
   // Connect to Gemini Live API
   const connect = useCallback(async () => {
+    // Prevent multiple simultaneous connection attempts
+    if (isConnectingRef.current) {
+      console.log('Connection already in progress');
+      return;
+    }
+    
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       console.log('Already connected');
       return;
     }
 
+    isConnectingRef.current = true;
     updateState({ connectionState: 'connecting', error: null });
 
     try {
@@ -238,25 +248,36 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       };
 
       ws.onclose = (event) => {
-        console.log('Gemini Live: Disconnected', event.reason);
+        console.log('Gemini Live: Disconnected', event.code, event.reason);
+        isConnectingRef.current = false;
         updateState({ 
           connectionState: 'disconnected', 
           isReady: false 
         });
 
-        // Auto reconnect if enabled and not intentional close
-        if (autoReconnect && event.code !== 1000) {
+        // Auto reconnect only if enabled, not intentional, and under max attempts
+        if (autoReconnect && event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          reconnectAttemptsRef.current++;
+          console.log(`Reconnect attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
           updateState({ connectionState: 'reconnecting' });
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
-          }, 3000);
+          }, 3000 * reconnectAttemptsRef.current); // Exponential backoff
+        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+          console.log('Max reconnect attempts reached');
+          updateState({ 
+            connectionState: 'error', 
+            error: 'Falha na conexão após múltiplas tentativas' 
+          });
         }
       };
 
       wsRef.current = ws;
+      reconnectAttemptsRef.current = 0; // Reset on successful connection start
 
     } catch (error) {
       console.error('Failed to connect:', error);
+      isConnectingRef.current = false;
       updateState({ 
         connectionState: 'error', 
         error: error instanceof Error ? error.message : 'Connection failed' 
