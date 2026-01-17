@@ -35,7 +35,8 @@ interface UseGeminiLiveReturn {
 }
 
 const DEFAULT_CONFIG: GeminiLiveConfig = {
-  model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+  // Modelo padrão mais estável para BidiGenerateContent (Gemini Live)
+  model: 'gemini-2.0-flash',
   responseModalities: ['AUDIO', 'TEXT'],
   systemInstruction: `Você é JARVIS, um assistente de IA avançado que pode ver a tela do usuário em tempo real.
 Você está aqui para ajudar com qualquer tarefa que o usuário esteja realizando.
@@ -91,11 +92,11 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   }, [onStateChange]);
 
   // Fetch ephemeral token from edge function
-  const getToken = useCallback(async (): Promise<GeminiTokenResponse | null> => {
+  const getToken = useCallback(async (modelOverride?: string): Promise<GeminiTokenResponse | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('gemini-live-token', {
         body: {
-          model: config.model,
+          model: modelOverride ?? config.model,
           responseModalities: config.responseModalities,
           systemInstruction: config.systemInstruction,
         },
@@ -193,28 +194,44 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     isConnectingRef.current = true;
     updateState({ connectionState: 'connecting', error: null, isReady: false });
 
-    // Promise resolves when we receive setupComplete
-    const readyPromise = new Promise<void>((resolve, reject) => {
-      readyResolverRef.current = resolve;
-      readyRejecterRef.current = reject;
-    });
+    const normalize = (v?: string) => (v || '').trim();
 
-    try {
+    // Model fallbacks (a Google muda nomes/allowlists com frequência)
+    const modelCandidates = Array.from(
+      new Set(
+        [
+          normalize(config.model),
+          'gemini-2.0-flash',
+          'gemini-2.0-flash-live-preview-04-09',
+          'gemini-2.0-flash-exp',
+        ].filter(Boolean)
+      )
+    );
+
+    const isModelNotSupported = (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      return (
+        msg.includes('not found for API version') ||
+        msg.includes('not supported for bidiGenerateContent') ||
+        msg.includes('is not supported for')
+      );
+    };
+
+    const attemptOnce = async (modelToTry: string) => {
+      // Promise resolves when we receive setupComplete
+      const readyPromise = new Promise<void>((resolve, reject) => {
+        readyResolverRef.current = resolve;
+        readyRejecterRef.current = reject;
+      });
+
       // Get ephemeral token or API key
-      const token = await getToken();
+      const token = await getToken(modelToTry);
       if (!token) {
-        updateState({
-          connectionState: 'error',
-          error: 'Falha ao obter autenticação do Gemini'
-        });
-        isConnectingRef.current = false;
-        readyRejecterRef.current?.(new Error('Failed to get token'));
-        return;
+        throw new Error('Falha ao obter autenticação do Gemini');
       }
       tokenRef.current = token;
 
       // Build WebSocket URL based on mode
-      // In 'direct' mode, use API key; in 'ephemeral' mode, use access_token
       let wsUrl: string;
       if (token.mode === 'direct' && token.apiKey) {
         wsUrl = `${token.wsUrl}?key=${token.apiKey}`;
@@ -227,18 +244,18 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       }
 
       wsUrlRef.current = wsUrl;
-      console.log('Gemini Live: Opening WebSocket…');
+      console.log(`Gemini Live: Opening WebSocket… (model=${modelToTry})`);
 
       const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
       ws.onopen = () => {
         console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
-        // Send setup message
         const setupMessage: GeminiSetupMessage = {
           setup: {
-            model: config.model || 'gemini-2.5-flash-native-audio-preview-12-2025',
+            model: modelToTry,
             generationConfig: {
               responseModalities: config.responseModalities,
               temperature: config.temperature,
@@ -265,11 +282,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
       ws.onerror = (error) => {
         console.error('Gemini WebSocket error:', error);
-        isConnectingRef.current = false;
-        updateState({
-          connectionState: 'error',
-          error: 'Erro de conexão WebSocket (Gemini)'
-        });
+        updateState({ connectionState: 'error', error: 'Erro de conexão WebSocket (Gemini)' });
         readyRejecterRef.current?.(new Error('WebSocket error'));
         readyResolverRef.current = null;
         readyRejecterRef.current = null;
@@ -280,16 +293,16 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         const code = event.code;
         const reason = event.reason || '(sem motivo)';
         console.log('Gemini Live: Disconnected', code, reason);
-        isConnectingRef.current = false;
 
         // If we closed before setupComplete, fail the connect() awaiter
         if (!isReadyRef.current) {
-          readyRejecterRef.current?.(new Error(`WebSocket fechado antes de ficar pronto (code=${code}, reason=${reason})`));
+          readyRejecterRef.current?.(
+            new Error(`WebSocket fechado antes de ficar pronto (code=${code}, reason=${reason})`)
+          );
           readyResolverRef.current = null;
           readyRejecterRef.current = null;
         }
 
-        // Auto reconnect only if enabled, not intentional, and under max attempts
         if (autoReconnect && code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++;
           console.log(`Reconnect attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
@@ -302,27 +315,48 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
         if (code !== 1000) {
           const msg = `Conexão Gemini encerrada (code=${code}) ${reason}`;
-          updateState({
-            connectionState: 'error',
-            isReady: false,
-            error: msg,
-          });
+          updateState({ connectionState: 'error', isReady: false, error: msg });
           onError?.(new Error(msg));
         } else {
-          updateState({
-            connectionState: 'disconnected',
-            isReady: false,
-          });
+          updateState({ connectionState: 'disconnected', isReady: false });
         }
       };
 
-      wsRef.current = ws;
-      reconnectAttemptsRef.current = 0;
-
       // Wait until setupComplete
       await readyPromise;
-      isConnectingRef.current = false;
+    };
 
+    try {
+      let lastError: unknown = null;
+
+      for (const model of modelCandidates) {
+        try {
+          // Close any previous socket before retry
+          if (wsRef.current) {
+            try {
+              wsRef.current.close(1000, 'Retry with fallback model');
+            } catch {
+              // ignore
+            }
+            wsRef.current = null;
+          }
+
+          await attemptOnce(model);
+          // success
+          reconnectAttemptsRef.current = 0;
+          isConnectingRef.current = false;
+          return;
+        } catch (e) {
+          lastError = e;
+          if (isModelNotSupported(e)) {
+            console.warn(`[Gemini Live] Modelo falhou, tentando fallback: ${model}`, e);
+            continue;
+          }
+          throw e;
+        }
+      }
+
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
     } catch (error) {
       console.error('Failed to connect:', error);
       isConnectingRef.current = false;
@@ -331,11 +365,11 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       readyRejecterRef.current = null;
       updateState({
         connectionState: 'error',
-        error: error instanceof Error ? error.message : 'Connection failed'
+        error: error instanceof Error ? error.message : 'Connection failed',
       });
       onError?.(error instanceof Error ? error : new Error('Connection failed'));
     }
-  }, [config, autoReconnect, getToken, handleMessage, onError, updateState, state.isReady]);
+  }, [config, autoReconnect, getToken, handleMessage, onError, updateState]);
 
   // Disconnect
   const disconnect = useCallback(() => {

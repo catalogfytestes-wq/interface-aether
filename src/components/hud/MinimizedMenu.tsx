@@ -238,7 +238,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.2 }}
-            className="absolute left-16 top-1/2 -translate-y-1/2 flex flex-col gap-2"
+            className="absolute left-16 top-1/2 -translate-y-1/2 flex flex-col gap-2 max-h-[80vh] overflow-y-auto pr-1"
           >
             {menuItems.map((item, index) => (
               <motion.button
