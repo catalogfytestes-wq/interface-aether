@@ -56,8 +56,21 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
     setMessages(prev => [...prev, newMessage]);
     
     // Se for resposta do assistente e voz está habilitada, fala
-    if (role === 'assistant' && voiceEnabled && content.trim()) {
-      speakAsync(content, { rate: 145 }); // Rate similar ao JARVIS
+    if (role === 'assistant' && content.trim()) {
+      console.log('[TTS DEBUG] Resposta do assistente recebida:', content.substring(0, 50));
+      console.log('[TTS DEBUG] voiceEnabled:', voiceEnabled);
+      console.log('[TTS DEBUG] ttsConnected:', ttsConnected);
+      
+      if (voiceEnabled) {
+        console.log('[TTS DEBUG] Tentando falar:', content);
+        speakAsync(content, { rate: 145 }).then(() => {
+          console.log('[TTS DEBUG] speakAsync retornou com sucesso');
+        }).catch((err) => {
+          console.error('[TTS DEBUG] Erro no speakAsync:', err);
+        });
+      } else {
+        console.log('[TTS DEBUG] Voz desabilitada, não falando');
+      }
     }
   };
 
