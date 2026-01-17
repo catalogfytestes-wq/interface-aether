@@ -122,7 +122,6 @@ const useVoiceRecognition = ({
   const [isSupported, setIsSupported] = useState(false);
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [lastError, setLastError] = useState<string | null>(null);
-  const [clapCount, setClapCount] = useState(0);
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const callbacksRef = useRef({ onTranscript, onFinalTranscript, onListeningChange, onWakeWord });
@@ -213,7 +212,6 @@ const useVoiceRecognition = ({
             }
             
             lastClapTimeRef.current = now;
-            setClapCount(clapCountRef.current);
             console.log(`👏 Clap detected! Count: ${clapCountRef.current}`);
             
             // Short cooldown to prevent double detection
@@ -229,7 +227,6 @@ const useVoiceRecognition = ({
             if (clapCountRef.current >= CLAPS_REQUIRED) {
               console.log('👏👏👏 Triple clap detected! Activating JARVIS...');
               clapCountRef.current = 0;
-              setClapCount(0);
               
               // Trigger wake word
               if (!isListeningRef.current) {
@@ -244,7 +241,6 @@ const useVoiceRecognition = ({
               // Reset after timeout
               clapTimeoutRef.current = setTimeout(() => {
                 clapCountRef.current = 0;
-                setClapCount(0);
               }, CLAP_MAX_INTERVAL);
             }
           }
@@ -601,7 +597,6 @@ const useVoiceRecognition = ({
     isSupported,
     micPermission,
     lastError,
-    clapCount,
     armWakeWord,
     startListening,
     stopListening,
