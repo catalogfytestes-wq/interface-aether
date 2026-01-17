@@ -357,4 +357,8 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
           </div>
         </div>
       </motion.div>
-    </AnimatePresence
+    </AnimatePresence>
+  );
+};
+
+export default ScreenAgentPanel;
