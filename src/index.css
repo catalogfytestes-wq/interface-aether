@@ -192,6 +192,38 @@
 }
 
 @layer utilities {
+  /* HUD scrollbar (menu / logs) */
+  .hud-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--hud-cyan) / 0.35) transparent;
+  }
+
+  .hud-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .hud-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .hud-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--hud-cyan) / 0.15),
+      hsl(var(--hud-cyan) / 0.45)
+    );
+    border-radius: 999px;
+    border: 1px solid hsl(var(--hud-cyan) / 0.25);
+  }
+
+  .hud-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--hud-cyan) / 0.25),
+      hsl(var(--hud-cyan) / 0.65)
+    );
+  }
+
   /* Animation utilities */
   .animate-spin-slow {
     animation: spin 8s linear infinite;

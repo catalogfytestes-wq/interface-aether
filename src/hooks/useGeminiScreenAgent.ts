@@ -14,6 +14,14 @@ interface UseGeminiScreenAgentOptions {
   onResponse?: (text: string, isFinal: boolean) => void;
   onAudioResponse?: (audioBase64: string) => void;
   onError?: (error: Error) => void;
+  onWsEvent?: (event: {
+    ts: number;
+    type: 'open' | 'setup_sent' | 'setup_complete' | 'close' | 'error' | 'retry';
+    model?: string;
+    code?: number;
+    reason?: string;
+    detail?: string;
+  }) => void;
 }
 
 interface UseGeminiScreenAgentReturn {
@@ -47,6 +55,7 @@ export function useGeminiScreenAgent(options: UseGeminiScreenAgentOptions = {}):
     onResponse,
     onAudioResponse,
     onError,
+    onWsEvent,
   } = options;
 
   const [state, setState] = useState<GeminiScreenAgentState>({
@@ -92,6 +101,7 @@ export function useGeminiScreenAgent(options: UseGeminiScreenAgentOptions = {}):
       playNextAudio();
     },
     onError,
+    onWsEvent,
     onStateChange: (geminiState) => {
       setState(prev => ({
         ...prev,

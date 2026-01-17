@@ -22,6 +22,14 @@ interface UseGeminiLiveOptions {
   onAudio?: (audioData: string) => void; // base64 audio
   onError?: (error: Error) => void;
   onStateChange?: (state: GeminiLiveState) => void;
+  onWsEvent?: (event: {
+    ts: number;
+    type: 'open' | 'setup_sent' | 'setup_complete' | 'close' | 'error' | 'retry';
+    model?: string;
+    code?: number;
+    reason?: string;
+    detail?: string;
+  }) => void;
 }
 
 interface UseGeminiLiveReturn {
@@ -32,6 +40,7 @@ interface UseGeminiLiveReturn {
   sendAudio: (audioBase64: string, mimeType?: string) => void;
   sendImage: (imageBase64: string, mimeType?: string) => void;
   sendScreenFrame: (frameBase64: string) => void;
+  getResolvedModel: () => string | null;
 }
 
 const DEFAULT_CONFIG: GeminiLiveConfig = {
@@ -53,6 +62,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     onAudio,
     onError,
     onStateChange,
+    onWsEvent,
   } = options;
 
   const [state, setState] = useState<GeminiLiveState>({
@@ -77,6 +87,13 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   const readyResolverRef = useRef<null | ((value: void) => void)>(null);
   const readyRejecterRef = useRef<null | ((reason?: unknown) => void)>(null);
   const isReadyRef = useRef(false);
+
+  const currentModelRef = useRef<string | null>(null);
+  const resolvedModelRef = useRef<string | null>(null);
+
+  const emitWsEvent = useCallback((evt: Parameters<NonNullable<UseGeminiLiveOptions['onWsEvent']>>[0]) => {
+    onWsEvent?.(evt);
+  }, [onWsEvent]);
 
   useEffect(() => {
     isReadyRef.current = state.isReady;
@@ -121,6 +138,8 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       // Setup complete
       if ('setupComplete' in message) {
         updateState({ isReady: true });
+        resolvedModelRef.current = currentModelRef.current;
+        emitWsEvent({ ts: Date.now(), type: 'setup_complete', model: currentModelRef.current ?? undefined });
         console.log('Gemini Live: Setup complete');
         readyResolverRef.current?.();
         readyResolverRef.current = null;
@@ -176,7 +195,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     } catch (error) {
       console.error('Error parsing Gemini message:', error);
     }
-  }, [onResponse, onAudio, updateState]);
+  }, [onResponse, onAudio, updateState, emitWsEvent]);
 
   // Connect to Gemini Live API
   const connect = useCallback(async () => {
@@ -197,16 +216,20 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     const normalize = (v?: string) => (v || '').trim();
 
     // Model fallbacks (a Google muda nomes/allowlists com frequência)
-    const modelCandidates = Array.from(
-      new Set(
-        [
-          normalize(config.model),
-          'gemini-2.0-flash',
-          'gemini-2.0-flash-live-preview-04-09',
-          'gemini-2.0-flash-exp',
-        ].filter(Boolean)
-      )
-    );
+    // Observação: alguns SDKs usam "models/<nome>" — mantemos os dois formatos.
+    const seed = normalize(config.model);
+    const baseCandidates = [
+      seed,
+      seed.startsWith('models/') ? seed.slice('models/'.length) : `models/${seed}`,
+      'models/gemini-2.0-flash-live-001',
+      'gemini-2.0-flash-live-001',
+      'models/gemini-2.0-flash-live-preview-04-09',
+      'gemini-2.0-flash-live-preview-04-09',
+      'models/gemini-2.0-flash-exp',
+      'gemini-2.0-flash-exp',
+    ].filter(Boolean);
+
+    const modelCandidates = Array.from(new Set(baseCandidates.map(normalize).filter(Boolean)));
 
     const isModelNotSupported = (err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -218,6 +241,9 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     };
 
     const attemptOnce = async (modelToTry: string) => {
+      currentModelRef.current = modelToTry;
+      emitWsEvent({ ts: Date.now(), type: 'retry', model: modelToTry });
+
       // Promise resolves when we receive setupComplete
       const readyPromise = new Promise<void>((resolve, reject) => {
         readyResolverRef.current = resolve;
@@ -250,6 +276,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       wsRef.current = ws;
 
       ws.onopen = () => {
+        emitWsEvent({ ts: Date.now(), type: 'open', model: modelToTry });
         console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
@@ -272,6 +299,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
         try {
           ws.send(JSON.stringify(setupMessage));
+          emitWsEvent({ ts: Date.now(), type: 'setup_sent', model: modelToTry });
           console.log('Gemini Live: Setup message sent');
         } catch (e) {
           console.error('Gemini Live: Failed to send setup message', e);
@@ -282,6 +310,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
       ws.onerror = (error) => {
         console.error('Gemini WebSocket error:', error);
+        emitWsEvent({ ts: Date.now(), type: 'error', model: modelToTry, detail: 'WebSocket error event' });
         updateState({ connectionState: 'error', error: 'Erro de conexão WebSocket (Gemini)' });
         readyRejecterRef.current?.(new Error('WebSocket error'));
         readyResolverRef.current = null;
@@ -292,6 +321,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       ws.onclose = (event) => {
         const code = event.code;
         const reason = event.reason || '(sem motivo)';
+        emitWsEvent({ ts: Date.now(), type: 'close', model: modelToTry, code, reason });
         console.log('Gemini Live: Disconnected', code, reason);
 
         // If we closed before setupComplete, fail the connect() awaiter
@@ -468,5 +498,6 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
     sendAudio,
     sendImage,
     sendScreenFrame,
+    getResolvedModel: () => resolvedModelRef.current,
   };
 }

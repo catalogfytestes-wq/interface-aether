@@ -1,12 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Monitor, 
-  MonitorOff, 
-  Mic, 
-  MicOff, 
-  Send, 
-  X, 
+import {
+  Monitor,
+  MonitorOff,
+  Mic,
+  MicOff,
+  Send,
+  X,
   Loader2,
   Wifi,
   WifiOff,
@@ -14,13 +14,23 @@ import {
   Minimize2,
   Volume2,
   VolumeX,
-  MessageCircle
+  MessageCircle,
+  Wrench,
+  RefreshCcw,
 } from 'lucide-react';
 import { useGeminiScreenAgent } from '@/hooks/useGeminiScreenAgent';
 import { useJarvisTTS } from '@/hooks/useJarvisTTS';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { toast } from '@/components/ui/sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface ScreenAgentPanelProps {
   isOpen: boolean;
@@ -37,11 +47,24 @@ interface Message {
   timestamp: Date;
 }
 
+const LS_MODEL_KEY = 'jarvis.gemini.liveModel';
+
 const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySound, onTTSSpeakingChange }: ScreenAgentPanelProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [wsEvents, setWsEvents] = useState<Array<{ ts: number; label: string }>>([]);
+  const [resolvedModel, setResolvedModel] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem(LS_MODEL_KEY) || 'models/gemini-2.0-flash-live-001';
+    } catch {
+      return 'models/gemini-2.0-flash-live-001';
+    }
+  });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -81,6 +104,27 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
     }
   };
 
+  const modelPresets = useMemo(
+    () => [
+      { label: 'Auto (recomendado)', value: selectedModel },
+      { label: 'models/gemini-2.0-flash-live-001', value: 'models/gemini-2.0-flash-live-001' },
+      { label: 'gemini-2.0-flash-live-001', value: 'gemini-2.0-flash-live-001' },
+      { label: 'models/gemini-2.0-flash-live-preview-04-09', value: 'models/gemini-2.0-flash-live-preview-04-09' },
+      { label: 'gemini-2.0-flash-live-preview-04-09', value: 'gemini-2.0-flash-live-preview-04-09' },
+      { label: 'models/gemini-2.0-flash-exp', value: 'models/gemini-2.0-flash-exp' },
+      { label: 'gemini-2.0-flash-exp', value: 'gemini-2.0-flash-exp' },
+    ],
+    [selectedModel]
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_MODEL_KEY, selectedModel);
+    } catch {
+      // ignore
+    }
+  }, [selectedModel]);
+
   const {
     state,
     start,
@@ -94,6 +138,10 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   } = useGeminiScreenAgent({
     frameRate: 1,
     audioEnabled: true,
+    config: {
+      model: selectedModel,
+      responseModalities: ['AUDIO', 'TEXT'],
+    },
     onTranscript: (text) => {
       if (text.trim()) {
         addMessage('user', text);
@@ -104,9 +152,46 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
         addMessage('assistant', text);
       }
     },
+    onWsEvent: (evt) => {
+      const when = new Date(evt.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const base = `${when} • ${evt.type}`;
+      const extra = evt.type === 'close'
+        ? ` (code=${evt.code}, reason=${evt.reason || ''})`
+        : evt.model
+          ? ` (model=${evt.model})`
+          : '';
+      setWsEvents(prev => [...prev, { ts: evt.ts, label: `${base}${extra}` }].slice(-20));
+      if (evt.type === 'setup_complete' && evt.model) {
+        setResolvedModel(evt.model);
+      }
+    },
     onError: (error) => {
       console.error('Screen Agent error:', error);
       addMessage('assistant', `Erro: ${error.message}`);
+
+      const msg = error.message || '';
+      const is1008 = msg.includes('code=1008') || msg.includes('(code=1008)');
+      if (is1008) {
+        toast.error('Gemini recusou o modelo (1008). Quer tentar outro automaticamente?', {
+          duration: Infinity,
+          action: {
+            label: 'Trocar e tentar',
+            onClick: async () => {
+              try {
+                stop();
+                await start();
+              } catch (e) {
+                const emsg = e instanceof Error ? e.message : String(e);
+                toast.error(`Falha ao reconectar: ${emsg}`);
+              }
+            },
+          },
+          cancel: {
+            label: 'Fechar',
+            onClick: () => undefined,
+          },
+        });
+      }
     },
   });
 
@@ -301,65 +386,147 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
         </div>
 
         {/* Control Bar */}
-        <div className={`flex items-center justify-center gap-3 p-3 border-b ${
+        <div className={`flex flex-col gap-2 p-3 border-b ${
           transparentMode ? 'border-white/20' : 'border-white/10'
         }`}>
-          {/* Connect Button */}
-          <motion.button
-            onClick={handleConnect}
-            onMouseEnter={() => onPlaySound?.('hover')}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
-              isConnected
-                ? 'bg-green-500/20 border border-green-500/50 text-green-400'
-                : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
-            }`}
-            disabled={isConnecting}
-          >
-            {isConnecting ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : isConnected ? (
-              <Wifi size={14} />
-            ) : (
-              <WifiOff size={14} />
-            )}
-            {isConnected ? 'Conectado' : 'Conectar'}
-          </motion.button>
+          <div className="flex items-center justify-center gap-3">
+            {/* Connect Button */}
+            <motion.button
+              onClick={handleConnect}
+              onMouseEnter={() => onPlaySound?.('hover')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
+                isConnected
+                  ? 'bg-green-500/20 border border-green-500/50 text-green-400'
+                  : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
+              }`}
+              disabled={isConnecting}
+            >
+              {isConnecting ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : isConnected ? (
+                <Wifi size={14} />
+              ) : (
+                <WifiOff size={14} />
+              )}
+              {isConnected ? 'Conectado' : 'Conectar'}
+            </motion.button>
 
-          {/* Screen Share Button */}
-          <motion.button
-            onClick={handleScreenShare}
-            onMouseEnter={() => onPlaySound?.('hover')}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
-              isSharing
-                ? 'bg-cyan-500/20 border border-cyan-500/50 text-cyan-400'
-                : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
-            }`}
-            disabled={!isConnected}
-          >
-            {isSharing ? <Monitor size={14} /> : <MonitorOff size={14} />}
-            {isSharing ? 'Compartilhando' : 'Compartilhar'}
-          </motion.button>
+            {/* Screen Share Button */}
+            <motion.button
+              onClick={handleScreenShare}
+              onMouseEnter={() => onPlaySound?.('hover')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
+                isSharing
+                  ? 'bg-cyan-500/20 border border-cyan-500/50 text-cyan-400'
+                  : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
+              }`}
+              disabled={!isConnected}
+            >
+              {isSharing ? <Monitor size={14} /> : <MonitorOff size={14} />}
+              {isSharing ? 'Compartilhando' : 'Compartilhar'}
+            </motion.button>
 
-          {/* Microphone Button */}
-          <motion.button
-            onClick={handleMicrophone}
-            onMouseEnter={() => onPlaySound?.('hover')}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
-              isMicActive
-                ? 'bg-purple-500/20 border border-purple-500/50 text-purple-400'
-                : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
-            }`}
-            disabled={!isConnected}
-          >
-            {isMicActive ? <Mic size={14} /> : <MicOff size={14} />}
-            {isMicActive ? 'Mic On' : 'Mic Off'}
-          </motion.button>
+            {/* Microphone Button */}
+            <motion.button
+              onClick={handleMicrophone}
+              onMouseEnter={() => onPlaySound?.('hover')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
+                isMicActive
+                  ? 'bg-purple-500/20 border border-purple-500/50 text-purple-400'
+                  : 'bg-white/10 border border-white/20 text-white/70 hover:text-white hover:border-white/40'
+              }`}
+              disabled={!isConnected}
+            >
+              {isMicActive ? <Mic size={14} /> : <MicOff size={14} />}
+              {isMicActive ? 'Mic On' : 'Mic Off'}
+            </motion.button>
+          </div>
+
+          {/* Debug row */}
+          <div className="flex items-center justify-between gap-2 px-1">
+            <div className="text-[11px] text-white/50 terminal-text">
+              Modelo ativo: <span className="text-white/80">{resolvedModel ?? '—'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <motion.button
+                onClick={async () => {
+                  onPlaySound?.('click');
+                  try {
+                    await start();
+                    toast.success(`Gemini OK: ${resolvedModel ?? 'conectado'}`);
+                  } catch (e) {
+                    const emsg = e instanceof Error ? e.message : String(e);
+                    toast.error(`Falha no teste: ${emsg}`, { duration: 8000 });
+                  }
+                }}
+                onMouseEnter={() => onPlaySound?.('hover')}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] border bg-white/10 border-white/20 text-white/70 hover:text-white hover:border-white/40"
+              >
+                <RefreshCcw size={12} />
+                Testar conexão Gemini
+              </motion.button>
+
+              <motion.button
+                onClick={() => setAdvancedOpen(v => !v)}
+                onMouseEnter={() => onPlaySound?.('hover')}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] border bg-white/10 border-white/20 text-white/70 hover:text-white hover:border-white/40"
+              >
+                <Wrench size={12} />
+                Avançado
+              </motion.button>
+            </div>
+          </div>
+
+          {advancedOpen && (
+            <div className="mt-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="text-[11px] text-white/50 terminal-text whitespace-nowrap">Modelo preferido</div>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger className="h-8 bg-white/5 border-white/20 text-white text-xs">
+                    <SelectValue placeholder="Selecione um modelo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelPresets.map(p => (
+                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className={`rounded border p-2 ${transparentMode ? 'border-white/20 bg-white/5' : 'border-white/10 bg-black/40'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-[11px] text-white/60 terminal-text">Últimos 20 eventos WebSocket</div>
+                  <button
+                    className="text-[11px] text-white/40 hover:text-white/70 terminal-text"
+                    onClick={() => setWsEvents([])}
+                  >
+                    limpar
+                  </button>
+                </div>
+                <ScrollArea className="h-28">
+                  <div className="space-y-1">
+                    {wsEvents.length === 0 ? (
+                      <div className="text-[11px] text-white/30 terminal-text">(sem eventos ainda)</div>
+                    ) : (
+                      wsEvents.map((e) => (
+                        <div key={e.ts + e.label} className="text-[11px] text-white/50 terminal-text break-words">{e.label}</div>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Screen Preview (hidden video element + preview) */}
