@@ -89,17 +89,17 @@ export function useGeminiVoiceAssistant(
   });
 
   // Gemini Live config
+  // Nota: gemini-2.0-flash-exp suporta apenas AUDIO como responseModality
+  // A systemInstruction é enviada no setup para dar contexto ao modelo
   const config: GeminiLiveConfig = {
     model: 'models/gemini-2.0-flash-exp',
-    responseModalities: ['AUDIO', 'TEXT'], // TEXT needed for image/screen analysis
+    responseModalities: ['AUDIO'],
     voiceName,
     systemInstruction: `Você é JARVIS, um assistente de IA avançado inspirado no assistente do Tony Stark.
-Você pode ver a tela do usuário em tempo real quando ele compartilhar.
-Quando receber uma imagem da tela, ANALISE E DESCREVA o que você vê de forma detalhada.
-Se o usuário perguntar "o que você vê" ou algo similar, descreva EXATAMENTE o conteúdo visível na tela.
+Você pode ver a tela do usuário em tempo real quando ele compartilhar imagens/screenshots.
+Se o usuário perguntar "o que você vê" ou similar, descreva o conteúdo da tela que você recebeu.
 Seja proativo, observador, inteligente e útil. Use um tom sofisticado mas acessível.
-Responda SEMPRE em português brasileiro. Seja conciso mas informativo nas respostas de voz.
-IMPORTANTE: Quando houver conteúdo visual, SEMPRE mencione o que está vendo.`,
+Responda SEMPRE em português brasileiro. Seja conciso mas informativo nas respostas de voz.`,
   };
 
   // Gemini Live hook

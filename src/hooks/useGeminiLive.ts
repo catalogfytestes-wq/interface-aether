@@ -305,11 +305,10 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
           // Build setup payload for gemini-2.0-flash-exp
           // IMPORTANT: Include systemInstruction for JARVIS persona
-          // and TEXT modality to process images/screen
           const setupPayload: Record<string, unknown> = {
             model: 'models/gemini-2.0-flash-exp',
             generationConfig: {
-              responseModalities: ['AUDIO', 'TEXT'], // TEXT needed for image processing
+              responseModalities: ['AUDIO'],
               speechConfig: {
                 voiceConfig: {
                   prebuiltVoiceConfig: {

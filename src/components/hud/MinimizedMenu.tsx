@@ -10,18 +10,15 @@ import {
   Music, 
   Activity,
   Radio,
-  Settings,
   Mic,
   MicOff,
   Bell,
-  Cpu,
   Wifi,
   Battery,
   User,
   CreditCard,
   LogIn,
   LogOut,
-  MonitorPlay
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import FuturisticClock from './FuturisticClock';
@@ -30,7 +27,6 @@ import CalendarWidget from './CalendarWidget';
 import MusicPlayer from './MusicPlayer';
 import RadarWidget from './RadarWidget';
 import SystemDiagnostics from './SystemDiagnostics';
-import ScreenAgentPanel from './ScreenAgentPanel';
 
 interface MinimizedMenuProps {
   onPlaySound?: (type: 'hover' | 'click' | 'activate') => void;
@@ -38,12 +34,11 @@ interface MinimizedMenuProps {
   onVoiceToggle?: () => void;
   onWidgetCommandRef?: MutableRefObject<(widget: string | null) => void>;
   transparentMode?: boolean;
-  onTTSSpeakingChange?: (isSpeaking: boolean) => void;
 }
 
-type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagnostics' | 'notifications' | 'network' | 'battery' | 'screenagent' | null;
+type WidgetType = 'clock' | 'weather' | 'calendar' | 'music' | 'radar' | 'diagnostics' | 'notifications' | 'network' | 'battery' | null;
 
-const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef, transparentMode = false, onTTSSpeakingChange }: MinimizedMenuProps) => {
+const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetCommandRef, transparentMode = false }: MinimizedMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeWidget, setActiveWidget] = useState<WidgetType>(null);
   const navigate = useNavigate();
@@ -67,7 +62,6 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
     {
       title: 'Widgets',
       items: [
-        { id: 'screenagent', icon: MonitorPlay, label: 'Screen Agent', highlight: true },
         { id: 'clock', icon: Clock, label: 'Relógio' },
         { id: 'weather', icon: Cloud, label: 'Clima' },
         { id: 'calendar', icon: Calendar, label: 'Calendário' },
@@ -121,10 +115,6 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
   };
 
   const renderWidget = () => {
-    // Screen Agent uses a separate panel, not inline widget
-    if (activeWidget === 'screenagent') {
-      return null;
-    }
     
     switch (activeWidget) {
       case 'clock':
@@ -383,7 +373,7 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
 
       {/* Active Widget Panel */}
       <AnimatePresence>
-        {activeWidget && activeWidget !== 'screenagent' && (
+        {activeWidget && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9, x: -20 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
@@ -407,15 +397,6 @@ const MinimizedMenu = ({ onPlaySound, isVoiceActive, onVoiceToggle, onWidgetComm
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Screen Agent Panel - Separate full panel */}
-      <ScreenAgentPanel
-        isOpen={activeWidget === 'screenagent'}
-        onClose={() => setActiveWidget(null)}
-        transparentMode={transparentMode}
-        onPlaySound={onPlaySound}
-        onTTSSpeakingChange={onTTSSpeakingChange}
-      />
     </div>
   );
 };
