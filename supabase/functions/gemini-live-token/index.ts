@@ -33,8 +33,10 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const {
-      // Modelo padrão mais estável para BidiGenerateContent (Live)
-      model = 'gemini-2.0-flash',
+      // Modelo padrão para BidiGenerateContent (Live API)
+      // Ref: https://discuss.ai.google.dev/t/gemini-flash-live-api-docs-chaos-sorted-out/80120
+      // gemini-2.0-flash-live-001 é confirmado funcionando na Europa e EUA
+      model = 'gemini-2.0-flash-live-001',
       uses = 1,
       expireMinutes = 30,
       newSessionExpireMinutes = 2,

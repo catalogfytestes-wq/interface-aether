@@ -59,9 +59,9 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   const [resolvedModel, setResolvedModel] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     try {
-      return localStorage.getItem(LS_MODEL_KEY) || 'models/gemini-2.0-flash-live-001';
+      return localStorage.getItem(LS_MODEL_KEY) || 'gemini-2.0-flash-live-001';
     } catch {
-      return 'models/gemini-2.0-flash-live-001';
+      return 'gemini-2.0-flash-live-001';
     }
   });
 
@@ -106,15 +106,13 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
 
   const modelPresets = useMemo(
     () => [
-      { label: 'Auto (recomendado)', value: selectedModel },
-      { label: 'models/gemini-2.0-flash-live-001', value: 'models/gemini-2.0-flash-live-001' },
-      { label: 'gemini-2.0-flash-live-001', value: 'gemini-2.0-flash-live-001' },
-      { label: 'models/gemini-2.0-flash-live-preview-04-09', value: 'models/gemini-2.0-flash-live-preview-04-09' },
-      { label: 'gemini-2.0-flash-live-preview-04-09', value: 'gemini-2.0-flash-live-preview-04-09' },
-      { label: 'models/gemini-2.0-flash-exp', value: 'models/gemini-2.0-flash-exp' },
+      { label: 'Auto (recomendado)', value: 'gemini-2.0-flash-live-001' },
+      { label: 'gemini-2.0-flash-live-001 (EU/US)', value: 'gemini-2.0-flash-live-001' },
+      { label: 'gemini-2.5-flash-preview-native-audio-dialog', value: 'gemini-2.5-flash-preview-native-audio-dialog' },
+      { label: 'gemini-2.0-flash-live-preview-04-09 (US)', value: 'gemini-2.0-flash-live-preview-04-09' },
       { label: 'gemini-2.0-flash-exp', value: 'gemini-2.0-flash-exp' },
     ],
-    [selectedModel]
+    []
   );
 
   useEffect(() => {
