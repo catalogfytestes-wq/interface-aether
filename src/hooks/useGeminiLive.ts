@@ -66,12 +66,20 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   });
 
   const wsRef = useRef<WebSocket | null>(null);
+  const wsUrlRef = useRef<string | null>(null);
   const tokenRef = useRef<GeminiTokenResponse | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const responseBufferRef = useRef<string>('');
   const isConnectingRef = useRef<boolean>(false);
   const reconnectAttemptsRef = useRef<number>(0);
   const maxReconnectAttempts = 3;
+  const readyResolverRef = useRef<null | ((value: void) => void)>(null);
+  const readyRejecterRef = useRef<null | ((reason?: unknown) => void)>(null);
+  const isReadyRef = useRef(false);
+
+  useEffect(() => {
+    isReadyRef.current = state.isReady;
+  }, [state.isReady]);
 
   // Update state and notify
   const updateState = useCallback((updates: Partial<GeminiLiveState>) => {
@@ -113,6 +121,9 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       if ('setupComplete' in message) {
         updateState({ isReady: true });
         console.log('Gemini Live: Setup complete');
+        readyResolverRef.current?.();
+        readyResolverRef.current = null;
+        readyRejecterRef.current = null;
         return;
       }
 
@@ -173,23 +184,31 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       console.log('Connection already in progress');
       return;
     }
-    
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       console.log('Already connected');
       return;
     }
 
     isConnectingRef.current = true;
-    updateState({ connectionState: 'connecting', error: null });
+    updateState({ connectionState: 'connecting', error: null, isReady: false });
+
+    // Promise resolves when we receive setupComplete
+    const readyPromise = new Promise<void>((resolve, reject) => {
+      readyResolverRef.current = resolve;
+      readyRejecterRef.current = reject;
+    });
 
     try {
       // Get ephemeral token or API key
       const token = await getToken();
       if (!token) {
-        updateState({ 
-          connectionState: 'error', 
-          error: 'Failed to get authentication token' 
+        updateState({
+          connectionState: 'error',
+          error: 'Falha ao obter autenticação do Gemini'
         });
+        isConnectingRef.current = false;
+        readyRejecterRef.current?.(new Error('Failed to get token'));
         return;
       }
       tokenRef.current = token;
@@ -198,21 +217,22 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       // In 'direct' mode, use API key; in 'ephemeral' mode, use access_token
       let wsUrl: string;
       if (token.mode === 'direct' && token.apiKey) {
-        // Direct API key mode
         wsUrl = `${token.wsUrl}?key=${token.apiKey}`;
         console.log('Gemini Live: Using direct API key mode');
       } else if (token.token) {
-        // Ephemeral token mode - use access_token parameter
         wsUrl = `${token.wsUrl}?access_token=${token.token}`;
         console.log('Gemini Live: Using ephemeral token mode');
       } else {
         throw new Error('No valid authentication method available');
       }
 
+      wsUrlRef.current = wsUrl;
+      console.log('Gemini Live: Opening WebSocket…');
+
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('Gemini Live: Connected');
+        console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
         // Send setup message
@@ -233,58 +253,89 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
           },
         };
 
-        ws.send(JSON.stringify(setupMessage));
+        try {
+          ws.send(JSON.stringify(setupMessage));
+          console.log('Gemini Live: Setup message sent');
+        } catch (e) {
+          console.error('Gemini Live: Failed to send setup message', e);
+        }
       };
 
       ws.onmessage = handleMessage;
 
       ws.onerror = (error) => {
         console.error('Gemini WebSocket error:', error);
-        updateState({ 
-          connectionState: 'error', 
-          error: 'WebSocket connection error' 
+        isConnectingRef.current = false;
+        updateState({
+          connectionState: 'error',
+          error: 'Erro de conexão WebSocket (Gemini)'
         });
+        readyRejecterRef.current?.(new Error('WebSocket error'));
+        readyResolverRef.current = null;
+        readyRejecterRef.current = null;
         onError?.(new Error('WebSocket connection error'));
       };
 
       ws.onclose = (event) => {
-        console.log('Gemini Live: Disconnected', event.code, event.reason);
+        const code = event.code;
+        const reason = event.reason || '(sem motivo)';
+        console.log('Gemini Live: Disconnected', code, reason);
         isConnectingRef.current = false;
-        updateState({ 
-          connectionState: 'disconnected', 
-          isReady: false 
-        });
+
+        // If we closed before setupComplete, fail the connect() awaiter
+        if (!isReadyRef.current) {
+          readyRejecterRef.current?.(new Error(`WebSocket fechado antes de ficar pronto (code=${code}, reason=${reason})`));
+          readyResolverRef.current = null;
+          readyRejecterRef.current = null;
+        }
 
         // Auto reconnect only if enabled, not intentional, and under max attempts
-        if (autoReconnect && event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        if (autoReconnect && code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++;
           console.log(`Reconnect attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
-          updateState({ connectionState: 'reconnecting' });
+          updateState({ connectionState: 'reconnecting', isReady: false });
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
-          }, 3000 * reconnectAttemptsRef.current); // Exponential backoff
-        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-          console.log('Max reconnect attempts reached');
-          updateState({ 
-            connectionState: 'error', 
-            error: 'Falha na conexão após múltiplas tentativas' 
+          }, 3000 * reconnectAttemptsRef.current);
+          return;
+        }
+
+        if (code !== 1000) {
+          const msg = `Conexão Gemini encerrada (code=${code}) ${reason}`;
+          updateState({
+            connectionState: 'error',
+            isReady: false,
+            error: msg,
+          });
+          onError?.(new Error(msg));
+        } else {
+          updateState({
+            connectionState: 'disconnected',
+            isReady: false,
           });
         }
       };
 
       wsRef.current = ws;
-      reconnectAttemptsRef.current = 0; // Reset on successful connection start
+      reconnectAttemptsRef.current = 0;
+
+      // Wait until setupComplete
+      await readyPromise;
+      isConnectingRef.current = false;
 
     } catch (error) {
       console.error('Failed to connect:', error);
       isConnectingRef.current = false;
-      updateState({ 
-        connectionState: 'error', 
-        error: error instanceof Error ? error.message : 'Connection failed' 
+      readyRejecterRef.current?.(error);
+      readyResolverRef.current = null;
+      readyRejecterRef.current = null;
+      updateState({
+        connectionState: 'error',
+        error: error instanceof Error ? error.message : 'Connection failed'
       });
       onError?.(error instanceof Error ? error : new Error('Connection failed'));
     }
-  }, [config, autoReconnect, getToken, handleMessage, onError, updateState]);
+  }, [config, autoReconnect, getToken, handleMessage, onError, updateState, state.isReady]);
 
   // Disconnect
   const disconnect = useCallback(() => {
@@ -293,16 +344,25 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       reconnectTimeoutRef.current = null;
     }
 
+    // If connect() is awaiting setupComplete, reject it
+    readyRejecterRef.current?.(new Error('Disconnected'));
+    readyResolverRef.current = null;
+    readyRejecterRef.current = null;
+
     if (wsRef.current) {
       wsRef.current.close(1000, 'User initiated disconnect');
       wsRef.current = null;
     }
 
+    wsUrlRef.current = null;
     tokenRef.current = null;
-    updateState({ 
-      connectionState: 'disconnected', 
+    isConnectingRef.current = false;
+
+    updateState({
+      connectionState: 'disconnected',
       isReady: false,
-      sessionHandle: null 
+      sessionHandle: null,
+      error: null,
     });
   }, [updateState]);
 
