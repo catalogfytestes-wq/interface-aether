@@ -26,6 +26,7 @@ const HUDOverlay = ({
   const [logsOpen, setLogsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMiniMode, setIsMiniMode] = useState(false);
+  const [isTTSSpeaking, setIsTTSSpeaking] = useState(false);
   const { playSound, toggleSound } = useSoundEffects();
   const { audioLevel, isCapturing, startCapturing, stopCapturing } = useAudioLevel();
   const playSoundRef = useRef(playSound);
@@ -399,6 +400,7 @@ const HUDOverlay = ({
         audioLevel={audioLevel} 
         transparentMode={transparentMode}
         systemMode={systemMode}
+        isSpeaking={isTTSSpeaking}
       />
 
       {/* Minimized Menu */}
@@ -408,6 +410,7 @@ const HUDOverlay = ({
         onVoiceToggle={handleVoiceToggle}
         onWidgetCommandRef={onWidgetCommand}
         transparentMode={transparentMode}
+        onTTSSpeakingChange={setIsTTSSpeaking}
       />
 
       {/* Voice Commands Help */}

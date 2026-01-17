@@ -16,16 +16,17 @@ interface Particle {
   hue: number;
 }
 
-type SystemMode = 'idle' | 'listening' | 'processing' | 'success' | 'error';
+type SystemMode = 'idle' | 'listening' | 'processing' | 'success' | 'error' | 'speaking';
 
 interface ParticleSphereProps {
   isListening?: boolean;
   audioLevel?: number;
   transparentMode?: boolean;
   systemMode?: SystemMode;
+  isSpeaking?: boolean;
 }
 
-const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode = false, systemMode = 'idle' }: ParticleSphereProps) => {
+const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode = false, systemMode = 'idle', isSpeaking = false }: ParticleSphereProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const angleRef = useRef(0);
@@ -35,6 +36,7 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
   const audioLevelRef = useRef(audioLevel);
   const transparentModeRef = useRef(transparentMode);
   const systemModeRef = useRef(systemMode);
+  const isSpeakingRef = useRef(isSpeaking);
   const colorTransitionRef = useRef(0);
 
   // Color schemes for different modes
@@ -44,6 +46,8 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
         return { primary: 180, secondary: 220, saturation: 80 }; // Cyan/Blue
       case 'processing':
         return { primary: 280, secondary: 320, saturation: 70 }; // Purple/Magenta
+      case 'speaking':
+        return { primary: 45, secondary: 60, saturation: 90 }; // Gold/Orange (JARVIS voice)
       case 'success':
         return { primary: 120, secondary: 160, saturation: 70 }; // Green
       case 'error':
@@ -69,6 +73,10 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
   useEffect(() => {
     systemModeRef.current = systemMode;
   }, [systemMode]);
+
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     mouseRef.current.x = e.clientX;
@@ -145,11 +153,16 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
       
       angleRef.current += 0.002;
 
-      // Update pulse based on listening state - use refs
+      // Update pulse based on listening/speaking state - use refs
       const currentListening = isListeningRef.current;
       const currentAudioLevel = audioLevelRef.current;
+      const currentSpeaking = isSpeakingRef.current;
 
-      if (currentListening) {
+      if (currentSpeaking) {
+        // Pulsing wave effect when JARVIS is speaking
+        const speakPulse = 0.4 + Math.sin(Date.now() * 0.008) * 0.3;
+        pulseRef.current = pulseRef.current + (speakPulse - pulseRef.current) * 0.15;
+      } else if (currentListening) {
         // Much stronger and more responsive pulse effect based on audio level
         const targetPulse = currentAudioLevel > 0.02 
           ? Math.min(1.5, currentAudioLevel * 4) // Amplified response
@@ -237,9 +250,10 @@ const ParticleSphere = ({ isListening = false, audioLevel = 0, transparentMode =
       }).sort((a, b) => a.screenZ - b.screenZ);
 
       // Get current mode colors with smooth transition
-      const currentMode = systemModeRef.current;
-      const modeColors = getModeColors(currentMode);
-      const targetColorMix = currentMode === 'idle' ? 0 : 1;
+      // Override mode to 'speaking' if TTS is active
+      const effectiveMode = isSpeakingRef.current ? 'speaking' : systemModeRef.current;
+      const modeColors = getModeColors(effectiveMode);
+      const targetColorMix = effectiveMode === 'idle' ? 0 : 1;
       colorTransitionRef.current += (targetColorMix - colorTransitionRef.current) * 0.02;
 
       sortedParticles.forEach((p, index) => {
