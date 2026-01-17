@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { X, Minus, Terminal } from 'lucide-react';
+import { X, Minus, Terminal, Wifi, WifiOff, Monitor, MonitorOff, Volume2, Loader2 } from 'lucide-react';
 
 interface WindowControlsProps {
   onClose?: () => void;
@@ -7,17 +7,103 @@ interface WindowControlsProps {
   onLogsToggle?: () => void;
   logsOpen?: boolean;
   transparentMode?: boolean;
+  // JARVIS status
+  isGeminiConnected?: boolean;
+  isGeminiConnecting?: boolean;
+  isScreenSharing?: boolean;
+  isSpeaking?: boolean;
+  audioLevel?: number;
+  onScreenShareToggle?: () => void;
 }
+
+// VU Meter Component for audio level
+const MiniVUMeter = ({ level, isActive }: { level: number; isActive: boolean }) => {
+  const bars = 5;
+  const activeThreshold = level * bars;
+  
+  return (
+    <div className="flex items-end gap-0.5 h-4">
+      {Array.from({ length: bars }).map((_, i) => {
+        const isBarActive = i < activeThreshold;
+        return (
+          <motion.div
+            key={i}
+            className={`w-1 rounded-sm transition-all duration-75 ${
+              isBarActive && isActive ? 'bg-cyan-400' : 'bg-white/20'
+            }`}
+            animate={{
+              height: isBarActive && isActive ? `${(i + 1) * 3}px` : '3px',
+            }}
+            transition={{ duration: 0.05 }}
+          />
+        );
+      })}
+    </div>
+  );
+};
 
 const WindowControls = ({ 
   onClose, 
   onMinimize, 
   onLogsToggle,
   logsOpen = false,
-  transparentMode = false 
+  transparentMode = false,
+  isGeminiConnected = false,
+  isGeminiConnecting = false,
+  isScreenSharing = false,
+  isSpeaking = false,
+  audioLevel = 0,
+  onScreenShareToggle,
 }: WindowControlsProps) => {
   return (
     <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+      {/* JARVIS Status Indicator */}
+      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-md ${
+        isGeminiConnected 
+          ? 'border-green-500/30 bg-green-500/10' 
+          : isGeminiConnecting
+            ? 'border-yellow-500/30 bg-yellow-500/10'
+            : 'border-red-500/30 bg-red-500/10'
+      }`}>
+        {/* Connection Status */}
+        <div className="flex items-center gap-1.5">
+          {isGeminiConnecting ? (
+            <Loader2 size={12} className="text-yellow-400 animate-spin" />
+          ) : isGeminiConnected ? (
+            <Wifi size={12} className="text-green-400" />
+          ) : (
+            <WifiOff size={12} className="text-red-400/60" />
+          )}
+          <span className={`text-[10px] font-mono tracking-wider ${
+            isGeminiConnected ? 'text-green-400' : isGeminiConnecting ? 'text-yellow-400' : 'text-red-400/60'
+          }`}>
+            {isGeminiConnecting ? 'CONECTANDO...' : isGeminiConnected ? 'JARVIS' : 'OFFLINE'}
+          </span>
+        </div>
+
+        {/* VU Meter when speaking */}
+        {isGeminiConnected && (
+          <MiniVUMeter level={audioLevel} isActive={isSpeaking} />
+        )}
+
+        {/* Screen Share Toggle */}
+        {isGeminiConnected && onScreenShareToggle && (
+          <motion.button
+            onClick={onScreenShareToggle}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className={`p-1 rounded transition-colors ${
+              isScreenSharing 
+                ? 'text-cyan-400 bg-cyan-400/20' 
+                : 'text-white/50 hover:text-white/80'
+            }`}
+            title={isScreenSharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
+          >
+            {isScreenSharing ? <Monitor size={12} /> : <MonitorOff size={12} />}
+          </motion.button>
+        )}
+      </div>
+
       {/* Logs Button */}
       <motion.button
         onClick={onLogsToggle}

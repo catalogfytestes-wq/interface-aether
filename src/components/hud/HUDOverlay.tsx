@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, VolumeX, ChevronUp, Maximize2, Minimize2, Monitor, MonitorOff, Wifi, WifiOff } from 'lucide-react';
+import { Volume2, VolumeX, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
 import ParticleSphere from './ParticleSphere';
 import MinimizedMenu from './MinimizedMenu';
 import WindowControls from './WindowControls';
@@ -416,14 +416,13 @@ const HUDOverlay = ({
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="fixed top-4 left-1/2 -translate-x-1/2 z-50"
+        className="fixed top-4 left-1/2 -translate-x-1/2 z-40"
       >
         <button
           type="button"
           onClick={() => {
             // user gesture to unlock mic/recognition if needed
             armWakeWord();
-            // also start active listening if user wants
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-colors ${
             isListening 
@@ -460,45 +459,8 @@ const HUDOverlay = ({
               ? '🎤 OUVINDO COMANDO...' 
               : isWakeWordListening 
                 ? '👂 ESCUTANDO: "JARVIS"' 
-                : '🔇 CLIQUE PARA ATIVAR MICROFONE'}
+                : '🔇 CLIQUE PARA ATIVAR'}
           </span>
-          
-          {/* Gemini Connection & Screen Share Status */}
-          <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
-            <div className="flex items-center gap-1" title={geminiAssistant.isConnected ? 'Gemini conectado' : 'Gemini desconectado'}>
-              {geminiAssistant.isConnected ? (
-                <Wifi size={12} className="text-green-400" />
-              ) : geminiAssistant.isConnecting ? (
-                <Wifi size={12} className="text-yellow-400 animate-pulse" />
-              ) : (
-                <WifiOff size={12} className="text-red-400/50" />
-              )}
-            </div>
-            
-            {geminiAssistant.isConnected && (
-              <button
-                onClick={() => {
-                  if (geminiAssistant.isScreenSharing) {
-                    geminiAssistant.stopScreenShare();
-                    toast('🖥️ Parei de ver sua tela');
-                  } else {
-                    geminiAssistant.startScreenShare().then(() => {
-                      toast.success('🖥️ Compartilhando tela');
-                    });
-                  }
-                }}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-colors ${
-                  geminiAssistant.isScreenSharing 
-                    ? 'bg-cyan-500/20 text-cyan-400' 
-                    : 'bg-white/10 text-white/50 hover:text-white/80'
-                }`}
-                title={geminiAssistant.isScreenSharing ? 'Clique para parar compartilhamento' : 'Clique para compartilhar tela'}
-              >
-                {geminiAssistant.isScreenSharing ? <Monitor size={10} /> : <MonitorOff size={10} />}
-                <span>{geminiAssistant.isScreenSharing ? 'TELA' : 'VER'}</span>
-              </button>
-            )}
-          </div>
         </button>
 
         {/* Indicador temporário de palmas (1-3) */}
@@ -524,13 +486,30 @@ const HUDOverlay = ({
         )}
       </motion.div>
 
-      {/* Window Controls */}
+      {/* Window Controls with JARVIS Status */}
       <WindowControls
         onClose={handleClose}
         onMinimize={handleMinimize}
         onLogsToggle={handleLogsToggle}
         logsOpen={logsOpen}
         transparentMode={transparentMode}
+        isGeminiConnected={geminiAssistant.isConnected}
+        isGeminiConnecting={geminiAssistant.isConnecting}
+        isScreenSharing={geminiAssistant.isScreenSharing}
+        isSpeaking={isTTSSpeaking || geminiAssistant.isSpeaking}
+        audioLevel={geminiAssistant.audioLevel}
+        onScreenShareToggle={() => {
+          if (geminiAssistant.isScreenSharing) {
+            geminiAssistant.stopScreenShare();
+            toast('🖥️ Parei de ver sua tela');
+          } else {
+            geminiAssistant.startScreenShare().then(() => {
+              toast.success('🖥️ Compartilhando tela');
+            }).catch(() => {
+              toast.error('Erro ao compartilhar tela');
+            });
+          }
+        }}
       />
 
       {/* System Logs Panel */}
@@ -556,7 +535,6 @@ const HUDOverlay = ({
         onVoiceToggle={handleVoiceToggle}
         onWidgetCommandRef={onWidgetCommand}
         transparentMode={transparentMode}
-        onTTSSpeakingChange={setIsTTSSpeaking}
       />
 
       {/* Voice Commands Help */}
