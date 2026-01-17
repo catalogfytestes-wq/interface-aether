@@ -8,6 +8,7 @@ interface UseVoiceRecognitionOptions {
   wakeWord?: string;
   language?: string;
   alwaysListenForWakeWord?: boolean;
+  enableClapDetection?: boolean;
 }
 
 interface SpeechRecognitionType {
@@ -23,6 +24,88 @@ interface SpeechRecognitionType {
   abort: () => void;
 }
 
+// Extended wake word variations for maximum sensitivity
+const WAKE_WORD_PATTERNS = [
+  // === OK JARVIS (primary - like "Ok Google") ===
+  /\bok\s*jarv/i,
+  /\bokay\s*jarv/i,
+  /\bo\s*k\s*jarv/i,
+  /\bok\s*djarv/i,
+  /\bokay\s*djarv/i,
+  /\bok\s*charv/i,
+  /\bok\s*xarv/i,
+  
+  // === JARVIS basic (very loose matching) ===
+  /jarv/i,           // catches jarvis, jarves, jarvi, jarvs, etc
+  /djarv/i,          // catches djarvis, djarves, etc
+  /diarv/i,          // catches diarvis, etc
+  /charv/i,          // catches charvis, charves
+  /xarv/i,           // catches xarvis
+  /giarv/i,          // catches giarvis
+  /gerv/i,           // catches gervais, gervis
+  /jerv/i,           // catches jervis
+  
+  // === Custom wake phrases ===
+  /acorda\s*beb[eê]/i,                    // "acorda bebê papai chegou"
+  /acordar?\s*jarv/i,                     // "acordar jarvis"
+  /desperta/i,                            // "despertar"
+  /ativar?\s*jarv/i,                      // "ativar jarvis"
+  /chamar?\s*jarv/i,                      // "chamar jarvis"
+  /iniciar?\s*jarv/i,                     // "iniciar jarvis"
+  /ligar?\s*jarv/i,                       // "ligar jarvis"
+  /acionar/i,                             // "acionar"
+  
+  // === Greetings with JARVIS ===
+  /\b(oi|ola|ol[áa]|hey|ei|e\s*ai|fala)\s*(a[ií])?\s*(jarv|djarv|charv)/i,
+  /\b(bom\s*dia|boa\s*tarde|boa\s*noite)\s*(jarv|djarv)/i,
+  
+  // === English variations ===
+  /\bhey\s*jarv/i,
+  /\bhi\s*jarv/i,
+  /\bhello\s*jarv/i,
+  /\bwake\s*up\s*jarv/i,
+];
+
+// Normalize text for better matching
+const normalizeText = (text: string): string => {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove accents
+    .replace(/[.,!?;:'"]/g, '')      // Remove punctuation
+    .replace(/\s+/g, ' ')            // Normalize spaces
+    .trim();
+};
+
+// Check if text contains wake word
+const containsWakeWord = (text: string): boolean => {
+  const normalized = normalizeText(text);
+  return WAKE_WORD_PATTERNS.some(pattern => pattern.test(normalized));
+};
+
+// Extract command after wake word
+const extractCommand = (text: string): string => {
+  const normalized = normalizeText(text);
+  
+  // Try to find and remove wake word patterns
+  let command = normalized;
+  
+  // Remove common wake word prefixes
+  const prefixPatterns = [
+    /^.*?\b(ok\s*jarv\w*|okay\s*jarv\w*)/i,
+    /^.*?\b(oi|ola|hey|ei)\s*(jarv\w*|djarv\w*)/i,
+    /^.*?\b(jarv\w*|djarv\w*|charv\w*|xarv\w*|giarv\w*)/i,
+    /^.*?\b(acorda\s*bebe|acordar|despertar|ativar|chamar|iniciar|ligar)/i,
+  ];
+  
+  for (const pattern of prefixPatterns) {
+    command = command.replace(pattern, '').trim();
+    if (command !== normalized) break;
+  }
+  
+  return command;
+};
+
 const useVoiceRecognition = ({
   onTranscript,
   onFinalTranscript,
@@ -31,6 +114,7 @@ const useVoiceRecognition = ({
   wakeWord = 'jarvis',
   language = 'pt-BR',
   alwaysListenForWakeWord = true,
+  enableClapDetection = true,
 }: UseVoiceRecognitionOptions = {}) => {
   const [isListening, setIsListening] = useState(false);
   const [isWakeWordListening, setIsWakeWordListening] = useState(false);
@@ -38,6 +122,7 @@ const useVoiceRecognition = ({
   const [isSupported, setIsSupported] = useState(false);
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [lastError, setLastError] = useState<string | null>(null);
+  const [clapCount, setClapCount] = useState(0);
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const callbacksRef = useRef({ onTranscript, onFinalTranscript, onListeningChange, onWakeWord });
@@ -50,6 +135,15 @@ const useVoiceRecognition = ({
   const lastTranscriptRef = useRef('');
   const commandExecutedRef = useRef(false);
   
+  // Clap detection refs
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const clapStreamRef = useRef<MediaStream | null>(null);
+  const lastClapTimeRef = useRef(0);
+  const clapCountRef = useRef(0);
+  const clapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
   // Keep callbacks up to date
   useEffect(() => {
     callbacksRef.current = { onTranscript, onFinalTranscript, onListeningChange, onWakeWord };
@@ -57,7 +151,136 @@ const useVoiceRecognition = ({
     alwaysListenRef.current = alwaysListenForWakeWord;
   }, [onTranscript, onFinalTranscript, onListeningChange, onWakeWord, wakeWord, alwaysListenForWakeWord]);
 
-  // Initialize recognition
+  // Clap detection with Web Audio API
+  useEffect(() => {
+    if (!enableClapDetection || !alwaysListenForWakeWord) return;
+    
+    let mounted = true;
+    
+    const setupClapDetection = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!mounted) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        
+        clapStreamRef.current = stream;
+        audioContextRef.current = new AudioContext();
+        analyserRef.current = audioContextRef.current.createAnalyser();
+        
+        const source = audioContextRef.current.createMediaStreamSource(stream);
+        source.connect(analyserRef.current);
+        
+        analyserRef.current.fftSize = 2048;
+        analyserRef.current.smoothingTimeConstant = 0.3;
+        
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        // Clap detection thresholds
+        const CLAP_THRESHOLD = 200;      // Volume threshold for clap
+        const CLAP_MIN_INTERVAL = 150;   // Minimum ms between claps
+        const CLAP_MAX_INTERVAL = 800;   // Maximum ms between claps for sequence
+        const CLAPS_REQUIRED = 3;        // Number of claps to trigger
+        
+        let lastPeak = 0;
+        let cooldown = false;
+        
+        const detectClaps = () => {
+          if (!mounted || !analyserRef.current) return;
+          
+          analyserRef.current.getByteTimeDomainData(dataArray);
+          
+          // Calculate peak amplitude
+          let peak = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            const amplitude = Math.abs(dataArray[i] - 128);
+            if (amplitude > peak) peak = amplitude;
+          }
+          
+          const now = Date.now();
+          
+          // Detect sudden loud sound (clap)
+          if (peak > CLAP_THRESHOLD && !cooldown && (now - lastClapTimeRef.current) > CLAP_MIN_INTERVAL) {
+            // Check if this is part of a sequence or new sequence
+            if ((now - lastClapTimeRef.current) > CLAP_MAX_INTERVAL) {
+              // New sequence
+              clapCountRef.current = 1;
+            } else {
+              // Continue sequence
+              clapCountRef.current++;
+            }
+            
+            lastClapTimeRef.current = now;
+            setClapCount(clapCountRef.current);
+            console.log(`👏 Clap detected! Count: ${clapCountRef.current}`);
+            
+            // Short cooldown to prevent double detection
+            cooldown = true;
+            setTimeout(() => { cooldown = false; }, CLAP_MIN_INTERVAL);
+            
+            // Clear previous timeout
+            if (clapTimeoutRef.current) {
+              clearTimeout(clapTimeoutRef.current);
+            }
+            
+            // Check if we have enough claps
+            if (clapCountRef.current >= CLAPS_REQUIRED) {
+              console.log('👏👏👏 Triple clap detected! Activating JARVIS...');
+              clapCountRef.current = 0;
+              setClapCount(0);
+              
+              // Trigger wake word
+              if (!isListeningRef.current) {
+                callbacksRef.current.onWakeWord?.();
+                setIsListening(true);
+                isListeningRef.current = true;
+                commandExecutedRef.current = false;
+                lastTranscriptRef.current = '';
+                callbacksRef.current.onListeningChange?.(true);
+              }
+            } else {
+              // Reset after timeout
+              clapTimeoutRef.current = setTimeout(() => {
+                clapCountRef.current = 0;
+                setClapCount(0);
+              }, CLAP_MAX_INTERVAL);
+            }
+          }
+          
+          lastPeak = peak;
+          animationFrameRef.current = requestAnimationFrame(detectClaps);
+        };
+        
+        detectClaps();
+        console.log('👏 Clap detection initialized');
+        
+      } catch (e) {
+        console.log('Could not initialize clap detection:', e);
+      }
+    };
+    
+    setupClapDetection();
+    
+    return () => {
+      mounted = false;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (clapTimeoutRef.current) {
+        clearTimeout(clapTimeoutRef.current);
+      }
+      if (clapStreamRef.current) {
+        clapStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, [enableClapDetection, alwaysListenForWakeWord]);
+
+  // Initialize speech recognition
   useEffect(() => {
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognitionClass);
@@ -69,8 +292,8 @@ const useVoiceRecognition = ({
     recognition.interimResults = true;
     recognition.lang = language;
     
-    // Keep recognition running longer
-    (recognition as any).maxAlternatives = 5;
+    // Maximum alternatives for better wake word detection
+    (recognition as any).maxAlternatives = 10;
 
     const clearTimers = () => {
       if (restartTimeoutRef.current) {
@@ -92,11 +315,10 @@ const useVoiceRecognition = ({
       try {
         recognition.start();
         isRunningRef.current = true;
-        console.log('✅ Recognition started successfully');
+        console.log('✅ Recognition started - listening for wake words');
       } catch (e: any) {
         console.log('Start failed:', e.message);
         isRunningRef.current = false;
-        // Try again after a longer delay
         setTimeout(() => {
           if (alwaysListenRef.current && !isRunningRef.current) {
             try {
@@ -104,11 +326,11 @@ const useVoiceRecognition = ({
               isRunningRef.current = true;
             } catch (e2) {}
           }
-        }, 1000);
+        }, 500);
       }
     };
 
-    const scheduleRestart = (delay: number = 100) => {
+    const scheduleRestart = (delay: number = 50) => {
       if (restartTimeoutRef.current) {
         clearTimeout(restartTimeoutRef.current);
       }
@@ -127,7 +349,6 @@ const useVoiceRecognition = ({
         callbacksRef.current.onFinalTranscript?.(lastTranscriptRef.current);
       }
       
-      // Stop listening mode
       console.log('⏹️ Auto-stopping after silence...');
       setIsListening(false);
       isListeningRef.current = false;
@@ -145,33 +366,40 @@ const useVoiceRecognition = ({
     };
 
     recognition.onstart = () => {
-      console.log('🎙️ Speech recognition ACTIVE - say "JARVIS"');
+      console.log('🎙️ Speech recognition ACTIVE - say "OK JARVIS", "acorda bebê", or clap 3x');
       isRunningRef.current = true;
       setIsWakeWordListening(true);
     };
 
     recognition.onend = () => {
-      console.log('Speech recognition ended, isRunning was:', isRunningRef.current);
+      console.log('Speech recognition ended');
       isRunningRef.current = false;
       
-      // Only restart if we should be listening
       if (alwaysListenRef.current) {
-        // Use longer delay to prevent rapid restart loops
-        scheduleRestart(500);
+        // Quick restart for better sensitivity
+        scheduleRestart(100);
       } else {
         setIsWakeWordListening(false);
       }
     };
 
     recognition.onresult = (event: any) => {
-      // Debug: some browsers fire empty events; log minimal info
-      try {
-        if (event?.results?.length) {
-          const latest = event.results[event.results.length - 1];
-          const latestText = latest?.[0]?.transcript;
-          if (latestText) console.log('🧠 SR raw:', latestText);
+      // Process all alternatives for better wake word detection
+      const alternatives: string[] = [];
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        for (let j = 0; j < result.length; j++) {
+          if (result[j]?.transcript) {
+            alternatives.push(result[j].transcript);
+          }
         }
-      } catch {}
+      }
+      
+      // Log all heard alternatives
+      if (alternatives.length > 0) {
+        console.log('🧠 Heard alternatives:', alternatives.slice(0, 3).join(' | '));
+      }
 
       let finalTranscript = '';
       let interimTranscript = '';
@@ -186,35 +414,10 @@ const useVoiceRecognition = ({
       }
 
       const currentTranscript = finalTranscript || interimTranscript;
-      const normalizedTranscript = (currentTranscript || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim();
-
-      if (normalizedTranscript) {
-        console.log('🎧 Heard:', normalizedTranscript);
-      }
-
-      // Check for wake word - extensive variations including greetings
-      const wakeWordVariations = [
-        // Basic variations
-        'jarvis', 'jarves', 'jarvi', 'jervis', 'jarvs', 'jarvo', 'jarbis', 'jarvez',
-        // Portuguese pronunciation
-        'djarvis', 'djarves', 'diarvis', 'dj arvis', 'dj-arvis', 'djarvi',
-        'charvis', 'charves', 'xarvis', 'xarves',
-        'giarvis', 'giarves',
-        // With greetings
-        'oi jarvis', 'ola jarvis', 'olá jarvis', 'hey jarvis', 'ei jarvis', 'e ai jarvis',
-        'oi djarvis', 'ola djarvis', 'hey djarvis',
-        'bom dia jarvis', 'boa tarde jarvis', 'boa noite jarvis',
-        // Commands starting with jarvis
-        'jarvis abrir', 'jarvis abre', 'jarvis mostra', 'jarvis fecha',
-        // Phonetic mishears
-        'jarvice', 'jarviz', 'djarviz', 'charviz', 'gervais', 'jerves'
-      ];
-
-      const hasWakeWord = wakeWordVariations.some(v => normalizedTranscript.includes(v));
+      
+      // Check ALL alternatives for wake word (more sensitive)
+      const hasWakeWord = alternatives.some(alt => containsWakeWord(alt)) || 
+                          containsWakeWord(currentTranscript);
 
       if (hasWakeWord && !isListeningRef.current) {
         console.log('🎤 Wake word detected! Activating JARVIS...');
@@ -225,35 +428,30 @@ const useVoiceRecognition = ({
         lastTranscriptRef.current = '';
         callbacksRef.current.onListeningChange?.(true);
 
-        // Check if there's already a command in the same phrase
-        const commandPart = normalizedTranscript.replace(/.*(?:jarv\w*|djarv\w*|diarv\w*|charv\w*|xarv\w*|giarv\w*)/i, '').trim();
-        if (commandPart.length > 3) {
+        // Extract any command in the same phrase
+        const commandPart = extractCommand(currentTranscript);
+        if (commandPart.length > 2) {
           lastTranscriptRef.current = commandPart;
           setTranscript(commandPart);
           callbacksRef.current.onTranscript?.(commandPart);
         }
 
-        // Start silence timer for auto-stop
         startSilenceTimer(3000);
         return;
       }
 
-      // If in active listening mode, process commands
+      // Active listening mode - process commands
       if (isListeningRef.current && currentTranscript) {
         lastTranscriptRef.current = currentTranscript;
         setTranscript(currentTranscript);
         callbacksRef.current.onTranscript?.(currentTranscript);
-
-        // Reset silence timer on any speech
+        
         startSilenceTimer(2500);
 
         if (finalTranscript) {
           console.log('📝 Final transcript:', finalTranscript);
-          // Execute command immediately on final transcript
           commandExecutedRef.current = true;
           callbacksRef.current.onFinalTranscript?.(finalTranscript);
-
-          // After command executed, short timer to close
           startSilenceTimer(1500);
         }
       }
@@ -262,11 +460,10 @@ const useVoiceRecognition = ({
     recognition.onerror = (event: any) => {
       const error = event.error as string;
 
-      // no-speech is normal - recognition just didn't hear anything
       if (error === 'no-speech') {
-        console.log('👂 No speech detected, continuing to listen...');
+        console.log('👂 No speech, continuing...');
         isRunningRef.current = false;
-        if (alwaysListenRef.current) scheduleRestart(250);
+        if (alwaysListenRef.current) scheduleRestart(100);
         return;
       }
 
@@ -275,35 +472,32 @@ const useVoiceRecognition = ({
         return;
       }
 
-      // Common when start() happens without a user gesture / mic blocked
       if (error === 'not-allowed' || error === 'service-not-allowed') {
-        console.error('❌ Speech recognition not allowed (needs user interaction or mic permission)');
+        console.error('❌ Microphone blocked');
         setMicPermission('denied');
-        setLastError('O navegador bloqueou o microfone/voz. Clique para ativar.');
+        setLastError('Microfone bloqueado. Clique para ativar.');
         isRunningRef.current = false;
         setIsWakeWordListening(false);
         return;
       }
 
-      console.error('❌ Speech recognition error:', error);
+      console.error('❌ Speech error:', error);
       setLastError(error);
       isRunningRef.current = false;
 
-      // Restart with longer delay for real errors
       if (alwaysListenRef.current) {
-        scheduleRestart(2000);
+        scheduleRestart(1000);
       }
     };
 
     recognitionRef.current = recognition;
 
-    // Auto-start if always listening (may fail without user gesture in some browsers)
     if (alwaysListenForWakeWord) {
       navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
         setMicPermission('granted');
         setLastError(null);
         stream.getTracks().forEach((t) => t.stop());
-        console.log('🎙️ Microfone permitido - armando escuta do "JARVIS"');
+        console.log('🎙️ Mic ready - listening for "OK JARVIS", custom phrases, or 3 claps');
         safeStart();
       }).catch((e) => {
         console.error('Microphone permission denied:', e);
@@ -341,14 +535,11 @@ const useVoiceRecognition = ({
       lastTranscriptRef.current = '';
       callbacksRef.current.onListeningChange?.(true);
 
-      // Make sure recognition is running
       if (!isRunningRef.current) {
         try {
           recognitionRef.current.start();
           isRunningRef.current = true;
-        } catch (e) {
-          // Already running, that's fine
-        }
+        } catch (e) {}
       }
 
       console.log('Started active listening...');
@@ -373,7 +564,7 @@ const useVoiceRecognition = ({
           recognitionRef.current.start();
           isRunningRef.current = true;
         } catch (e: any) {
-          setLastError(e?.message || 'Falha ao iniciar reconhecimento');
+          setLastError(e?.message || 'Falha ao iniciar');
         }
       }
     } catch (e) {
@@ -392,7 +583,7 @@ const useVoiceRecognition = ({
     lastTranscriptRef.current = '';
     commandExecutedRef.current = false;
     callbacksRef.current.onListeningChange?.(false);
-    console.log('Stopped active listening, still detecting wake word');
+    console.log('Stopped active listening');
   }, []);
 
   const toggleListening = useCallback(() => {
@@ -410,6 +601,7 @@ const useVoiceRecognition = ({
     isSupported,
     micPermission,
     lastError,
+    clapCount,
     armWakeWord,
     startListening,
     stopListening,
