@@ -33,7 +33,7 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const {
-      model = 'gemini-2.0-flash-live-001',
+      model = 'gemini-2.5-flash-native-audio-preview-12-2025',
       uses = 1,
       expireMinutes = 30,
       newSessionExpireMinutes = 2,
