@@ -44,9 +44,10 @@ interface UseGeminiLiveReturn {
 }
 
 const DEFAULT_CONFIG: GeminiLiveConfig = {
-  // Modelo padrão para Live API (BidiGenerateContent)
-  // Ref: https://discuss.ai.google.dev/t/gemini-flash-live-api-docs-chaos-sorted-out/80120
-  model: 'gemini-2.0-flash-live-001',
+  // Modelo padrão para Live API (BidiGenerateContent) - Janeiro 2026
+  // Ref: https://ai.google.dev/gemini-api/docs/models?hl=pt-br
+  // Único modelo oficialmente compatível com API Live: gemini-2.5-flash-native-audio-preview-12-2025
+  model: 'gemini-2.5-flash-native-audio-preview-12-2025',
   responseModalities: ['AUDIO', 'TEXT'],
   systemInstruction: `Você é JARVIS, um assistente de IA avançado que pode ver a tela do usuário em tempo real.
 Você está aqui para ajudar com qualquer tarefa que o usuário esteja realizando.
@@ -216,28 +217,25 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
     const normalize = (v?: string) => (v || '').trim();
 
-    // Model fallbacks para Gemini Live API (BidiGenerateContent)
-    // Ref: https://discuss.ai.google.dev/t/gemini-flash-live-api-docs-chaos-sorted-out/80120
-    // Modelos confirmados funcionando:
-    //   - gemini-2.0-flash-live-001 (funciona Europe west4)
-    //   - gemini-2.0-flash-live-preview-04-09 (funciona US central1)
-    //   - gemini-2.5-flash-preview-native-audio-dialog (mais recente 2025)
-    // NÃO funcionam diretamente: gemini-2.0-flash, gemini-2.0-flash-exp (apenas para generateContent, não Live)
+    // Model fallbacks para Gemini Live API (BidiGenerateContent) - Janeiro 2026
+    // Ref: https://ai.google.dev/gemini-api/docs/models?hl=pt-br
+    // ÚNICO modelo oficialmente compatível com API Live:
+    //   - gemini-2.5-flash-native-audio-preview-12-2025 (entrada: áudio/vídeo/texto, saída: áudio/texto)
+    // Modelos antigos não funcionam mais: gemini-2.0-flash-live-001, gemini-2.0-flash-exp, etc.
     const seed = normalize(config.model);
     const baseCandidates = [
       // User-selected model first
       seed,
       seed.startsWith('models/') ? seed.slice('models/'.length) : `models/${seed}`,
-      // Modelos Live API confirmados
+      // Modelo Live API oficial (Janeiro 2026)
+      'gemini-2.5-flash-native-audio-preview-12-2025',
+      'models/gemini-2.5-flash-native-audio-preview-12-2025',
+      // Versão anterior (Setembro 2025)
+      'gemini-2.5-flash-native-audio-preview-09-2025',
+      'models/gemini-2.5-flash-native-audio-preview-09-2025',
+      // Fallbacks legados (podem não funcionar)
       'gemini-2.0-flash-live-001',
-      'models/gemini-2.0-flash-live-001',
-      'gemini-2.5-flash-preview-native-audio-dialog',
-      'models/gemini-2.5-flash-preview-native-audio-dialog',
-      'gemini-2.0-flash-live-preview-04-09',
-      'models/gemini-2.0-flash-live-preview-04-09',
-      // Fallbacks experimentais
       'gemini-2.0-flash-exp',
-      'models/gemini-2.0-flash-exp',
     ].filter(Boolean);
 
     const modelCandidates = Array.from(new Set(baseCandidates.map(normalize).filter(Boolean)));
