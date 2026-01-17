@@ -289,27 +289,28 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
-        // Build setup message with advanced audio features
-        const setupPayload: Record<string, unknown> = {
-          model: modelToTry,
-          generationConfig: {
-            responseModalities: config.responseModalities,
-            temperature: config.temperature,
-            topK: config.topK,
-            topP: config.topP,
-          },
+        // Build setup message following official Gemini Live API format
+        // Ref: https://ai.google.dev/gemini-api/docs/live-guide
+        // All config options go inside generationConfig, NOT at root level
+        const generationConfig: Record<string, unknown> = {
+          responseModalities: config.responseModalities || ['AUDIO', 'TEXT'],
         };
 
-        // Add system instruction
-        if (config.systemInstruction) {
-          setupPayload.systemInstruction = {
-            parts: [{ text: config.systemInstruction }],
-          };
+        // Add optional generation params
+        if (config.temperature !== undefined) {
+          generationConfig.temperature = config.temperature;
+        }
+        if (config.topK !== undefined) {
+          generationConfig.topK = config.topK;
+        }
+        if (config.topP !== undefined) {
+          generationConfig.topP = config.topP;
         }
 
-        // Add voice configuration (speechConfig)
+        // Add voice configuration (speechConfig) - INSIDE generationConfig
+        // Ref: speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
         if (config.voiceName) {
-          setupPayload.speechConfig = {
+          generationConfig.speechConfig = {
             voiceConfig: {
               prebuiltVoiceConfig: {
                 voiceName: config.voiceName,
@@ -318,22 +319,35 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
           };
         }
 
-        // Add affective dialog (emotional responses)
+        // Add thinking budget (thinkingConfig) - INSIDE generationConfig
+        if (config.thinkingBudget !== undefined) {
+          generationConfig.thinkingConfig = {
+            thinkingBudget: config.thinkingBudget,
+          };
+        }
+
+        // Build the setup payload
+        const setupPayload: Record<string, unknown> = {
+          model: modelToTry,
+          generationConfig,
+        };
+
+        // Add system instruction at root level
+        if (config.systemInstruction) {
+          setupPayload.systemInstruction = {
+            parts: [{ text: config.systemInstruction }],
+          };
+        }
+
+        // Add affective dialog (v1alpha only, at root level of config)
         if (config.enableAffectiveDialog) {
           setupPayload.enableAffectiveDialog = true;
         }
 
-        // Add proactive audio (model decides when to respond)
+        // Add proactive audio (v1alpha only, at root level of config)
         if (config.proactiveAudio) {
           setupPayload.proactivity = {
             proactiveAudio: true,
-          };
-        }
-
-        // Add thinking budget
-        if (config.thinkingBudget !== undefined) {
-          setupPayload.thinkingConfig = {
-            thinkingBudget: config.thinkingBudget,
           };
         }
 
