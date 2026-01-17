@@ -121,13 +121,24 @@ const ScreenAgentPanel = ({ isOpen, onClose, transparentMode = false, onPlaySoun
   const isSharing = state.screenShare.isSharing;
   const isMicActive = state.audio.isMicActive;
 
+  const hasWelcomedRef = useRef(false);
+
+  useEffect(() => {
+    if (state.connection === 'connected' && !hasWelcomedRef.current) {
+      hasWelcomedRef.current = true;
+      addMessage('assistant', 'Conectado! Compartilhe sua tela para eu poder ver o que você está fazendo.');
+    }
+    if (state.connection === 'disconnected') {
+      hasWelcomedRef.current = false;
+    }
+  }, [state.connection]);
+
   const handleConnect = async () => {
     onPlaySound?.('activate');
     if (isConnected) {
       stop();
     } else {
       await start();
-      addMessage('assistant', 'Conectado! Compartilhe sua tela para eu poder ver o que você está fazendo.');
     }
   };
 
