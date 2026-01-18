@@ -1,18 +1,17 @@
-// Gemini Live API WebSocket Client Hook
+// Gemini Live API WebSocket Client Hook - CORRIGIDO
 // Handles real-time bidirectional communication with Gemini
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useCallback, useRef, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import type {
   GeminiLiveConfig,
   GeminiLiveState,
-  GeminiConnectionState,
   GeminiServerMessage,
   GeminiSetupMessage,
   GeminiRealtimeInputMessage,
   GeminiClientContentMessage,
   GeminiTokenResponse,
-} from '@/lib/gemini/types';
+} from "@/lib/gemini/types";
 
 interface UseGeminiLiveOptions {
   config?: GeminiLiveConfig;
@@ -24,7 +23,7 @@ interface UseGeminiLiveOptions {
   onStateChange?: (state: GeminiLiveState) => void;
   onWsEvent?: (event: {
     ts: number;
-    type: 'open' | 'setup_sent' | 'setup_complete' | 'close' | 'error' | 'retry';
+    type: "open" | "setup_sent" | "setup_complete" | "close" | "error" | "retry";
     model?: string;
     code?: number;
     reason?: string;
@@ -45,10 +44,9 @@ interface UseGeminiLiveReturn {
 
 const DEFAULT_CONFIG: GeminiLiveConfig = {
   // Modelo experimental para Live API (BidiGenerateContent)
-  // Ref: https://ai.google.dev/gemini-api/docs/live
-  model: 'models/gemini-2.0-flash-exp',
-  responseModalities: ['AUDIO'],
-  voiceName: 'Kore',
+  model: "models/gemini-2.0-flash-exp",
+  responseModalities: ["AUDIO"],
+  voiceName: "Kore",
   systemInstruction: `Você é JARVIS, um assistente de IA avançado que pode ver a tela do usuário em tempo real.
 Você está aqui para ajudar com qualquer tarefa que o usuário esteja realizando.
 Seja proativo, observador e útil. Responda sempre em português brasileiro.
@@ -58,7 +56,7 @@ Quando o usuário compartilhar a tela, analise o conteúdo e ofereça ajuda cont
 export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLiveReturn {
   const {
     config = DEFAULT_CONFIG,
-    autoReconnect = false, // Disabled by default to prevent reconnect loops
+    autoReconnect = false,
     onTranscript,
     onResponse,
     onAudio,
@@ -68,12 +66,12 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   } = options;
 
   const [state, setState] = useState<GeminiLiveState>({
-    connectionState: 'disconnected',
+    connectionState: "disconnected",
     isReady: false,
     isSpeaking: false,
     isListening: false,
-    lastTranscript: '',
-    lastResponse: '',
+    lastTranscript: "",
+    lastResponse: "",
     error: null,
     sessionHandle: null,
   });
@@ -82,7 +80,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   const wsUrlRef = useRef<string | null>(null);
   const tokenRef = useRef<GeminiTokenResponse | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  const responseBufferRef = useRef<string>('');
+  const responseBufferRef = useRef<string>("");
   const isConnectingRef = useRef<boolean>(false);
   const reconnectAttemptsRef = useRef<number>(0);
   const maxReconnectAttempts = 3;
@@ -93,187 +91,175 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   const currentModelRef = useRef<string | null>(null);
   const resolvedModelRef = useRef<string | null>(null);
 
-  const emitWsEvent = useCallback((evt: Parameters<NonNullable<UseGeminiLiveOptions['onWsEvent']>>[0]) => {
-    onWsEvent?.(evt);
-  }, [onWsEvent]);
+  const emitWsEvent = useCallback(
+    (evt: Parameters<NonNullable<UseGeminiLiveOptions["onWsEvent"]>>[0]) => {
+      onWsEvent?.(evt);
+    },
+    [onWsEvent],
+  );
 
   useEffect(() => {
     isReadyRef.current = state.isReady;
   }, [state.isReady]);
 
   // Update state and notify
-  const updateState = useCallback((updates: Partial<GeminiLiveState>) => {
-    setState(prev => {
-      const newState = { ...prev, ...updates };
-      onStateChange?.(newState);
-      return newState;
-    });
-  }, [onStateChange]);
+  const updateState = useCallback(
+    (updates: Partial<GeminiLiveState>) => {
+      setState((prev) => {
+        const newState = { ...prev, ...updates };
+        onStateChange?.(newState);
+        return newState;
+      });
+    },
+    [onStateChange],
+  );
 
   // Fetch ephemeral token from edge function
-  const getToken = useCallback(async (modelOverride?: string): Promise<GeminiTokenResponse | null> => {
-    try {
-      const { data, error } = await supabase.functions.invoke('gemini-live-token', {
-        body: {
-          model: modelOverride ?? config.model,
-          responseModalities: config.responseModalities,
-          systemInstruction: config.systemInstruction,
-        },
-      });
+  const getToken = useCallback(
+    async (modelOverride?: string): Promise<GeminiTokenResponse | null> => {
+      try {
+        const { data, error } = await supabase.functions.invoke("gemini-live-token", {
+          body: {
+            model: modelOverride ?? config.model,
+            responseModalities: config.responseModalities,
+            systemInstruction: config.systemInstruction,
+          },
+        });
 
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+        if (error) throw error;
+        if (data.error) throw new Error(data.error);
 
-      return data as GeminiTokenResponse;
-    } catch (error) {
-      console.error('Failed to get Gemini token:', error);
-      onError?.(error instanceof Error ? error : new Error('Failed to get token'));
-      return null;
-    }
-  }, [config, onError]);
+        return data as GeminiTokenResponse;
+      } catch (error) {
+        console.error("Failed to get Gemini token:", error);
+        onError?.(error instanceof Error ? error : new Error("Failed to get token"));
+        return null;
+      }
+    },
+    [config, onError],
+  );
 
   // Handle incoming WebSocket messages
-  const handleMessage = useCallback((event: MessageEvent) => {
-    try {
-      const message = JSON.parse(event.data) as GeminiServerMessage;
+  const handleMessage = useCallback(
+    (event: MessageEvent) => {
+      try {
+        const message = JSON.parse(event.data) as GeminiServerMessage;
 
-      // Setup complete
-      if ('setupComplete' in message) {
-        updateState({ isReady: true });
-        resolvedModelRef.current = currentModelRef.current;
-        emitWsEvent({ ts: Date.now(), type: 'setup_complete', model: currentModelRef.current ?? undefined });
-        console.log('Gemini Live: Setup complete');
-        readyResolverRef.current?.();
-        readyResolverRef.current = null;
-        readyRejecterRef.current = null;
-        return;
-      }
-
-      // Server content (model response)
-      if ('serverContent' in message) {
-        const content = message.serverContent;
-
-        if (content.interrupted) {
-          responseBufferRef.current = '';
-          updateState({ isSpeaking: false });
+        // Setup complete
+        if ("setupComplete" in message) {
+          updateState({ isReady: true });
+          resolvedModelRef.current = currentModelRef.current;
+          emitWsEvent({ ts: Date.now(), type: "setup_complete", model: currentModelRef.current ?? undefined });
+          console.log("Gemini Live: Setup complete");
+          readyResolverRef.current?.();
+          readyResolverRef.current = null;
+          readyRejecterRef.current = null;
           return;
         }
 
-        if (content.modelTurn?.parts) {
-          for (const part of content.modelTurn.parts) {
-            // Text response
-            if (part.text) {
-              responseBufferRef.current += part.text;
-              onResponse?.(part.text, false);
-            }
+        // Server content (model response)
+        if ("serverContent" in message) {
+          const content = message.serverContent;
 
-            // Audio response
-            if (part.inlineData?.data) {
-              onAudio?.(part.inlineData.data);
-              updateState({ isSpeaking: true });
+          if (content.interrupted) {
+            responseBufferRef.current = "";
+            updateState({ isSpeaking: false });
+            return;
+          }
+
+          if (content.modelTurn?.parts) {
+            for (const part of content.modelTurn.parts) {
+              // Text response
+              if (part.text) {
+                responseBufferRef.current += part.text;
+                onResponse?.(part.text, false);
+              }
+
+              // Audio response
+              if (part.inlineData?.data) {
+                onAudio?.(part.inlineData.data);
+                updateState({ isSpeaking: true });
+              }
             }
+          }
+
+          if (content.turnComplete) {
+            const fullResponse = responseBufferRef.current;
+            responseBufferRef.current = "";
+            updateState({
+              lastResponse: fullResponse,
+              isSpeaking: false,
+            });
+            onResponse?.(fullResponse, true);
           }
         }
 
-        if (content.turnComplete) {
-          const fullResponse = responseBufferRef.current;
-          responseBufferRef.current = '';
-          updateState({ 
-            lastResponse: fullResponse,
-            isSpeaking: false 
-          });
-          onResponse?.(fullResponse, true);
+        // Session resumption
+        if ("sessionResumptionUpdate" in message) {
+          const update = message.sessionResumptionUpdate;
+          if (update.newHandle) {
+            updateState({ sessionHandle: update.newHandle });
+          }
         }
+      } catch (error) {
+        console.error("Error parsing Gemini message:", error);
       }
-
-      // Session resumption
-      if ('sessionResumptionUpdate' in message) {
-        const update = message.sessionResumptionUpdate;
-        if (update.newHandle) {
-          updateState({ sessionHandle: update.newHandle });
-        }
-      }
-
-    } catch (error) {
-      console.error('Error parsing Gemini message:', error);
-    }
-  }, [onResponse, onAudio, updateState, emitWsEvent]);
+    },
+    [onResponse, onAudio, updateState, emitWsEvent],
+  );
 
   // Connect to Gemini Live API
   const connect = useCallback(async () => {
-    // Prevent multiple simultaneous connection attempts
     if (isConnectingRef.current) {
-      console.log('Connection already in progress');
+      console.log("Connection already in progress");
       return;
     }
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('Already connected');
+      console.log("Already connected");
       return;
     }
 
     isConnectingRef.current = true;
-    updateState({ connectionState: 'connecting', error: null, isReady: false });
+    updateState({ connectionState: "connecting", error: null, isReady: false });
 
-    const normalize = (v?: string) => (v || '').trim();
+    const normalize = (v?: string) => (v || "").trim();
 
-        // Model for Gemini Live API (BidiGenerateContent)
-        // Ref: https://ai.google.dev/gemini-api/docs/live
-        // Usando gemini-2.0-flash-exp que suporta BidiGenerateContent
-        const baseCandidates = [
-          // Modelo experimental que suporta a API Live
-          'models/gemini-2.0-flash-exp',
-        ];
+    // Lista de modelos. O código agora usa o prefixo correto "models/"
+    const baseCandidates = ["models/gemini-2.0-flash-exp"];
 
     const modelCandidates = Array.from(new Set(baseCandidates.map(normalize).filter(Boolean)));
 
-    const isModelNotSupported = (err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      return (
-        msg.includes('not found for API version') ||
-        msg.includes('not supported for bidiGenerateContent') ||
-        msg.includes('is not supported for')
-      );
-    };
-
     const attemptOnce = async (modelToTry: string) => {
       currentModelRef.current = modelToTry;
-      emitWsEvent({ ts: Date.now(), type: 'retry', model: modelToTry });
+      emitWsEvent({ ts: Date.now(), type: "retry", model: modelToTry });
 
-      // Promise resolves when we receive setupComplete
       const readyPromise = new Promise<void>((resolve, reject) => {
         readyResolverRef.current = resolve;
         readyRejecterRef.current = reject;
       });
 
-      // Get ephemeral token or API key
+      // Pede token ou chave para o backend
+      // O backend já trata de limpar prefixos duplicados
       const token = await getToken(modelToTry);
       if (!token) {
-        throw new Error('Falha ao obter autenticação do Gemini');
+        throw new Error("Falha ao obter autenticação do Gemini");
       }
       tokenRef.current = token;
 
-      // Build WebSocket URL based on mode
-      const resolveWsBaseUrl = (baseUrl: string, model: string) => {
-        // Alguns modelos experimentais (ex: gemini-2.0-flash-exp) usam o serviço v1alpha.
-        // Se o backend retornar v1beta, forçamos a versão correta para evitar ficar "offline".
-        if (model.includes('gemini-2.0-flash-exp') && baseUrl.includes('.v1beta.')) {
-          return baseUrl.replace('.v1beta.', '.v1alpha.');
-        }
-        return baseUrl;
-      };
-
-      const wsBase = resolveWsBaseUrl(token.wsUrl, modelToTry);
-
+      // --- CORREÇÃO: Removida a lógica que forçava v1alpha ---
+      // Usamos a URL retornada pelo backend (que geralmente é v1beta)
+      const wsUrlBase = token.wsUrl;
       let wsUrl: string;
-      if (token.mode === 'direct' && token.apiKey) {
-        wsUrl = `${wsBase}?key=${token.apiKey}`;
-        console.log('Gemini Live: Using direct API key mode');
+
+      if (token.mode === "direct" && token.apiKey) {
+        wsUrl = `${wsUrlBase}?key=${token.apiKey}`;
+        console.log("Gemini Live: Using direct API key mode (Fallback)");
       } else if (token.token) {
-        wsUrl = `${wsBase}?access_token=${token.token}`;
-        console.log('Gemini Live: Using ephemeral token mode');
+        wsUrl = `${wsUrlBase}?access_token=${token.token}`;
+        console.log("Gemini Live: Using ephemeral token mode");
       } else {
-        throw new Error('No valid authentication method available');
+        throw new Error("No valid authentication method available");
       }
 
       wsUrlRef.current = wsUrl;
@@ -283,51 +269,15 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       wsRef.current = ws;
 
       ws.onopen = () => {
-        emitWsEvent({ ts: Date.now(), type: 'open', model: modelToTry });
-        console.log('Gemini Live: Connected (socket open)');
-        updateState({ connectionState: 'connected' });
+        emitWsEvent({ ts: Date.now(), type: "open", model: modelToTry });
+        console.log("Gemini Live: Connected (socket open)");
+        updateState({ connectionState: "connected" });
 
-        const voiceName = config.voiceName || 'Kore';
-        const isV1Alpha = wsBase.includes('.v1alpha.');
+        const voiceName = config.voiceName || "Kore";
 
-        // Build setup message for Gemini Live API
-        // v1alpha costuma usar snake_case (generation_config / response_modalities)
-        // v1beta costuma usar camelCase (generationConfig / responseModalities)
+        // --- CORREÇÃO: Setup Message sempre em camelCase (Padrão v1beta) ---
         const buildSetupMessage = (): GeminiSetupMessage => {
-          const modalities = config.responseModalities || ['AUDIO'];
-
-          if (isV1Alpha) {
-            const generation_config: Record<string, unknown> = {
-              response_modalities: modalities,
-            };
-
-            if (voiceName) {
-              generation_config.speech_config = {
-                voice_config: {
-                  prebuilt_voice_config: {
-                    voice_name: voiceName,
-                  },
-                },
-              };
-            }
-
-            if (config.temperature !== undefined) generation_config.temperature = config.temperature;
-            if (config.topK !== undefined) generation_config.top_k = config.topK;
-            if (config.topP !== undefined) generation_config.top_p = config.topP;
-
-            const setup: Record<string, unknown> = {
-              model: modelToTry,
-              generation_config,
-            };
-
-            if (config.systemInstruction) {
-              setup.system_instruction = {
-                parts: [{ text: config.systemInstruction }],
-              };
-            }
-
-            return { setup: setup as unknown as GeminiSetupMessage['setup'] };
-          }
+          const modalities = config.responseModalities || ["AUDIO"];
 
           const generationConfig: Record<string, unknown> = {
             responseModalities: modalities,
@@ -358,42 +308,37 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
             };
           }
 
-          return { setup: setupPayload as GeminiSetupMessage['setup'] };
+          return { setup: setupPayload as GeminiSetupMessage["setup"] };
         };
 
         const setupMessage = buildSetupMessage();
 
         try {
           ws.send(JSON.stringify(setupMessage));
-          emitWsEvent({ ts: Date.now(), type: 'setup_sent', model: modelToTry });
-          console.log('Gemini Live: Setup message sent');
+          emitWsEvent({ ts: Date.now(), type: "setup_sent", model: modelToTry });
+          console.log("Gemini Live: Setup message sent (camelCase)");
         } catch (e) {
-          console.error('Gemini Live: Failed to send setup message', e);
+          console.error("Gemini Live: Failed to send setup message", e);
         }
       };
 
       ws.onmessage = handleMessage;
 
       ws.onerror = (error) => {
-        console.error('Gemini WebSocket error:', error);
-        emitWsEvent({ ts: Date.now(), type: 'error', model: modelToTry, detail: 'WebSocket error event' });
-        updateState({ connectionState: 'error', error: 'Erro de conexão WebSocket (Gemini)' });
-        readyRejecterRef.current?.(new Error('WebSocket error'));
-        readyResolverRef.current = null;
-        readyRejecterRef.current = null;
-        onError?.(new Error('WebSocket connection error'));
+        console.error("Gemini WebSocket error:", error);
+        emitWsEvent({ ts: Date.now(), type: "error", model: modelToTry, detail: "WebSocket error event" });
+        // Não rejeitamos imediatamente aqui, deixamos o onclose lidar ou timeout
       };
 
       ws.onclose = (event) => {
         const code = event.code;
-        const reason = event.reason || '(sem motivo)';
-        emitWsEvent({ ts: Date.now(), type: 'close', model: modelToTry, code, reason });
-        console.log('Gemini Live: Disconnected', code, reason);
+        const reason = event.reason || "(sem motivo)";
+        emitWsEvent({ ts: Date.now(), type: "close", model: modelToTry, code, reason });
+        console.log("Gemini Live: Disconnected", code, reason);
 
-        // If we closed before setupComplete, fail the connect() awaiter
         if (!isReadyRef.current) {
           readyRejecterRef.current?.(
-            new Error(`WebSocket fechado antes de ficar pronto (code=${code}, reason=${reason})`)
+            new Error(`WebSocket fechado antes de ficar pronto (code=${code}, reason=${reason})`),
           );
           readyResolverRef.current = null;
           readyRejecterRef.current = null;
@@ -402,7 +347,7 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         if (autoReconnect && code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++;
           console.log(`Reconnect attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
-          updateState({ connectionState: 'reconnecting', isReady: false });
+          updateState({ connectionState: "reconnecting", isReady: false });
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
           }, 3000 * reconnectAttemptsRef.current);
@@ -411,61 +356,48 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
         if (code !== 1000) {
           const msg = `Conexão Gemini encerrada (code=${code}) ${reason}`;
-          updateState({ connectionState: 'error', isReady: false, error: msg });
+          updateState({ connectionState: "error", isReady: false, error: msg });
           onError?.(new Error(msg));
         } else {
-          updateState({ connectionState: 'disconnected', isReady: false });
+          updateState({ connectionState: "disconnected", isReady: false });
         }
       };
 
-      // Wait until setupComplete
       await readyPromise;
     };
 
     try {
       let lastError: unknown = null;
-
       for (const model of modelCandidates) {
         try {
-          // Close any previous socket before retry
           if (wsRef.current) {
             try {
-              wsRef.current.close(1000, 'Retry with fallback model');
-            } catch {
-              // ignore
-            }
+              wsRef.current.close(1000, "Retry");
+            } catch {}
             wsRef.current = null;
           }
-
           await attemptOnce(model);
-          // success
           reconnectAttemptsRef.current = 0;
           isConnectingRef.current = false;
           return;
         } catch (e) {
           lastError = e;
-          if (isModelNotSupported(e)) {
-            console.warn(`[Gemini Live] Modelo falhou, tentando fallback: ${model}`, e);
-            continue;
-          }
-          throw e;
+          console.warn(`[Gemini Live] Modelo falhou: ${model}`, e);
+          continue;
         }
       }
-
       throw lastError instanceof Error ? lastError : new Error(String(lastError));
     } catch (error) {
-      console.error('Failed to connect:', error);
+      console.error("Failed to connect:", error);
       isConnectingRef.current = false;
       readyRejecterRef.current?.(error);
-      readyResolverRef.current = null;
-      readyRejecterRef.current = null;
       updateState({
-        connectionState: 'error',
-        error: error instanceof Error ? error.message : 'Connection failed',
+        connectionState: "error",
+        error: error instanceof Error ? error.message : "Connection failed",
       });
-      onError?.(error instanceof Error ? error : new Error('Connection failed'));
+      onError?.(error instanceof Error ? error : new Error("Connection failed"));
     }
-  }, [config, autoReconnect, getToken, handleMessage, onError, updateState]);
+  }, [config, autoReconnect, getToken, handleMessage, onError, updateState, emitWsEvent]);
 
   // Disconnect
   const disconnect = useCallback(() => {
@@ -473,23 +405,19 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-
-    // If connect() is awaiting setupComplete, reject it
-    readyRejecterRef.current?.(new Error('Disconnected'));
+    readyRejecterRef.current?.(new Error("Disconnected"));
     readyResolverRef.current = null;
     readyRejecterRef.current = null;
 
     if (wsRef.current) {
-      wsRef.current.close(1000, 'User initiated disconnect');
+      wsRef.current.close(1000, "User initiated disconnect");
       wsRef.current = null;
     }
-
     wsUrlRef.current = null;
     tokenRef.current = null;
     isConnectingRef.current = false;
-
     updateState({
-      connectionState: 'disconnected',
+      connectionState: "disconnected",
       isReady: false,
       sessionHandle: null,
       error: null,
@@ -497,59 +425,53 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
   }, [updateState]);
 
   // Send text message
-  const sendText = useCallback((text: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket not connected');
-      return;
-    }
-
-    const message: GeminiClientContentMessage = {
-      clientContent: {
-        turns: [{ role: 'user', parts: [{ text }] }],
-        turnComplete: true,
-      },
-    };
-
-    wsRef.current.send(JSON.stringify(message));
-    updateState({ lastTranscript: text });
-  }, [updateState]);
+  const sendText = useCallback(
+    (text: string) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.warn("WebSocket not connected");
+        return;
+      }
+      const message: GeminiClientContentMessage = {
+        clientContent: {
+          turns: [{ role: "user", parts: [{ text }] }],
+          turnComplete: true,
+        },
+      };
+      wsRef.current.send(JSON.stringify(message));
+      updateState({ lastTranscript: text });
+    },
+    [updateState],
+  );
 
   // Send audio data
-  const sendAudio = useCallback((audioBase64: string, mimeType = 'audio/pcm;rate=16000') => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
+  const sendAudio = useCallback((audioBase64: string, mimeType = "audio/pcm;rate=16000") => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     const message: GeminiRealtimeInputMessage = {
       realtimeInput: {
         mediaChunks: [{ mimeType, data: audioBase64 }],
       },
     };
-
     wsRef.current.send(JSON.stringify(message));
   }, []);
 
   // Send image data
-  const sendImage = useCallback((imageBase64: string, mimeType = 'image/jpeg') => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
+  const sendImage = useCallback((imageBase64: string, mimeType = "image/jpeg") => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     const message: GeminiRealtimeInputMessage = {
       realtimeInput: {
         mediaChunks: [{ mimeType, data: imageBase64 }],
       },
     };
-
     wsRef.current.send(JSON.stringify(message));
   }, []);
 
-  // Convenience method for screen frames
-  const sendScreenFrame = useCallback((frameBase64: string) => {
-    sendImage(frameBase64, 'image/jpeg');
-  }, [sendImage]);
+  const sendScreenFrame = useCallback(
+    (frameBase64: string) => {
+      sendImage(frameBase64, "image/jpeg");
+    },
+    [sendImage],
+  );
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       disconnect();
