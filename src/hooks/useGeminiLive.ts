@@ -44,9 +44,9 @@ interface UseGeminiLiveReturn {
 }
 
 const DEFAULT_CONFIG: GeminiLiveConfig = {
-  // Modelo oficial para Live API (BidiGenerateContent) - Janeiro 2026
+  // Modelo experimental para Live API (BidiGenerateContent)
   // Ref: https://ai.google.dev/gemini-api/docs/live
-  model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+  model: 'models/gemini-2.0-flash-exp',
   responseModalities: ['AUDIO'],
   voiceName: 'Kore',
   systemInstruction: `Você é JARVIS, um assistente de IA avançado que pode ver a tela do usuário em tempo real.
@@ -217,17 +217,13 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
 
     const normalize = (v?: string) => (v || '').trim();
 
-        // Model fallbacks para Gemini Live API (BidiGenerateContent)
+        // Model for Gemini Live API (BidiGenerateContent)
         // Ref: https://ai.google.dev/gemini-api/docs/live
-        // Usando gemini-2.5-flash-native-audio-preview como modelo principal
-        const seed = normalize(config.model);
+        // Usando gemini-2.0-flash-exp que suporta BidiGenerateContent
         const baseCandidates = [
-          // User-selected model first
-          seed,
-          // Modelo oficial para Live API - Janeiro 2026
-          'gemini-2.5-flash-native-audio-preview-12-2025',
-          'models/gemini-2.5-flash-native-audio-preview-12-2025',
-        ].filter(Boolean);
+          // Modelo experimental que suporta a API Live
+          'models/gemini-2.0-flash-exp',
+        ];
 
     const modelCandidates = Array.from(new Set(baseCandidates.map(normalize).filter(Boolean)));
 
