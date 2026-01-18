@@ -1,4 +1,4 @@
-// Gemini Live API Ephemeral Token Generator
+// Gemini Live API Ephemeral Token Generator - VERSÃO CORRIGIDA E FINAL
 // This edge function creates short-lived tokens for secure client-side WebSocket connections
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
@@ -33,15 +33,11 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const {
-      // Modelo padrão para BidiGenerateContent (Live API) - Janeiro 2026
-      // Ref: https://ai.google.dev/gemini-api/docs/models?hl=pt-br
-      // Único modelo oficialmente compatível com API Live
+      // Modelo correto para a Live API (Jan 2026)
       model = "gemini-2.0-flash-exp",
       uses = 1,
       expireMinutes = 30,
       newSessionExpireMinutes = 2,
-      responseModalities = ["AUDIO"],
-      systemInstruction,
     } = body;
 
     // Calculate expiration times in ISO format
@@ -49,28 +45,17 @@ serve(async (req) => {
     const expireTime = new Date(now.getTime() + expireMinutes * 60 * 1000).toISOString();
     const newSessionExpireTime = new Date(now.getTime() + newSessionExpireMinutes * 60 * 1000).toISOString();
 
-    // Create ephemeral token request following the v1alpha API spec
+    // Criação do pedido do token
+    // NOTA: Removidas as 'live_connect_constraints' para evitar o erro de desconexão imediata (Handshake Failure)
     const tokenRequest: Record<string, unknown> = {
       uses,
       expire_time: expireTime,
       new_session_expire_time: newSessionExpireTime,
     };
 
-    // Optionally lock to specific configuration
-    if (systemInstruction) {
-      tokenRequest.live_connect_constraints = {
-        model: `models/${model}`,
-        config: {
-          response_modalities: responseModalities,
-          system_instruction: { parts: [{ text: systemInstruction }] },
-        },
-      };
-    }
-
-    console.log("Creating ephemeral token with request:", JSON.stringify(tokenRequest));
+    console.log("Creating ephemeral token (NO CONSTRAINTS) for:", model);
 
     // Request ephemeral token from Gemini API v1alpha
-    // Note: WebSocket Live API endpoint is v1beta (see https://ai.google.dev/api/live)
     const response = await fetch(`https://generativelanguage.googleapis.com/v1alpha/authTokens?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: {
@@ -80,29 +65,21 @@ serve(async (req) => {
     });
 
     const responseText = await response.text();
-    console.log("Gemini API response status:", response.status);
-    console.log("Gemini API response:", responseText);
+
+    // LOG APENAS PARA DEBUG (Pode remover depois se quiser limpar o console)
+    // console.log("Gemini API response status:", response.status);
 
     if (!response.ok) {
-      // If the authTokens endpoint doesn't work, fall back to direct API key mode
-      // This allows the client to connect directly with the API key
-      console.log("Ephemeral token creation failed, using direct API key mode");
+      console.error("Failed to generate token:", responseText);
 
+      // SEGURANÇA: Retornamos erro 502 em vez de expor a API Key
       return new Response(
         JSON.stringify({
-          // Return the API key directly for WebSocket connection
-          // The client will use it as: wss://...?key=API_KEY
-          apiKey: GEMINI_API_KEY,
-          expireTime,
-          newSessionExpireTime,
-          model,
-          // IMPORTANT: Live WebSocket endpoint is v1beta
-          wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`,
-          mode: "direct", // Indicates direct API key mode
-          note: "Ephemeral tokens not available, using direct API key connection",
+          error: "Failed to generate ephemeral token from Google",
+          details: responseText,
         }),
         {
-          status: 200,
+          status: 502,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
@@ -125,9 +102,9 @@ serve(async (req) => {
         expireTime,
         newSessionExpireTime,
         model,
-        // IMPORTANT: Live WebSocket endpoint is v1beta
+        // URL oficial do WebSocket v1beta
         wsUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`,
-        mode: "ephemeral", // Indicates ephemeral token mode
+        mode: "ephemeral",
       }),
       {
         status: 200,
