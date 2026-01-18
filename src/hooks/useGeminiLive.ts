@@ -254,12 +254,23 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
       tokenRef.current = token;
 
       // Build WebSocket URL based on mode
+      const resolveWsBaseUrl = (baseUrl: string, model: string) => {
+        // Alguns modelos experimentais (ex: gemini-2.0-flash-exp) usam o serviço v1alpha.
+        // Se o backend retornar v1beta, forçamos a versão correta para evitar ficar "offline".
+        if (model.includes('gemini-2.0-flash-exp') && baseUrl.includes('.v1beta.')) {
+          return baseUrl.replace('.v1beta.', '.v1alpha.');
+        }
+        return baseUrl;
+      };
+
+      const wsBase = resolveWsBaseUrl(token.wsUrl, modelToTry);
+
       let wsUrl: string;
       if (token.mode === 'direct' && token.apiKey) {
-        wsUrl = `${token.wsUrl}?key=${token.apiKey}`;
+        wsUrl = `${wsBase}?key=${token.apiKey}`;
         console.log('Gemini Live: Using direct API key mode');
       } else if (token.token) {
-        wsUrl = `${token.wsUrl}?access_token=${token.token}`;
+        wsUrl = `${wsBase}?access_token=${token.token}`;
         console.log('Gemini Live: Using ephemeral token mode');
       } else {
         throw new Error('No valid authentication method available');
@@ -276,46 +287,81 @@ export function useGeminiLive(options: UseGeminiLiveOptions = {}): UseGeminiLive
         console.log('Gemini Live: Connected (socket open)');
         updateState({ connectionState: 'connected' });
 
-        // Build setup message for Gemini Live API
-        // Format according to: https://ai.google.dev/gemini-api/docs/live
         const voiceName = config.voiceName || 'Kore';
-        
-        // Build generationConfig with proper structure
-        const generationConfig: Record<string, unknown> = {
-          responseModalities: config.responseModalities || ['AUDIO'],
-        };
+        const isV1Alpha = wsBase.includes('.v1alpha.');
 
-        // Add speech config for voice
-        if (voiceName) {
-          generationConfig.speechConfig = {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName,
+        // Build setup message for Gemini Live API
+        // v1alpha costuma usar snake_case (generation_config / response_modalities)
+        // v1beta costuma usar camelCase (generationConfig / responseModalities)
+        const buildSetupMessage = (): GeminiSetupMessage => {
+          const modalities = config.responseModalities || ['AUDIO'];
+
+          if (isV1Alpha) {
+            const generation_config: Record<string, unknown> = {
+              response_modalities: modalities,
+            };
+
+            if (voiceName) {
+              generation_config.speech_config = {
+                voice_config: {
+                  prebuilt_voice_config: {
+                    voice_name: voiceName,
+                  },
+                },
+              };
+            }
+
+            if (config.temperature !== undefined) generation_config.temperature = config.temperature;
+            if (config.topK !== undefined) generation_config.top_k = config.topK;
+            if (config.topP !== undefined) generation_config.top_p = config.topP;
+
+            const setup: Record<string, unknown> = {
+              model: modelToTry,
+              generation_config,
+            };
+
+            if (config.systemInstruction) {
+              setup.system_instruction = {
+                parts: [{ text: config.systemInstruction }],
+              };
+            }
+
+            return { setup: setup as unknown as GeminiSetupMessage['setup'] };
+          }
+
+          const generationConfig: Record<string, unknown> = {
+            responseModalities: modalities,
+          };
+
+          if (voiceName) {
+            generationConfig.speechConfig = {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName,
+                },
               },
-            },
+            };
+          }
+
+          if (config.temperature !== undefined) generationConfig.temperature = config.temperature;
+          if (config.topK !== undefined) generationConfig.topK = config.topK;
+          if (config.topP !== undefined) generationConfig.topP = config.topP;
+
+          const setupPayload: Record<string, unknown> = {
+            model: modelToTry,
+            generationConfig,
           };
-        }
 
-        if (config.temperature !== undefined) generationConfig.temperature = config.temperature;
-        if (config.topK !== undefined) generationConfig.topK = config.topK;
-        if (config.topP !== undefined) generationConfig.topP = config.topP;
+          if (config.systemInstruction) {
+            setupPayload.systemInstruction = {
+              parts: [{ text: config.systemInstruction }],
+            };
+          }
 
-        // Build setup payload
-        const setupPayload: Record<string, unknown> = {
-          model: modelToTry,
-          generationConfig,
+          return { setup: setupPayload as GeminiSetupMessage['setup'] };
         };
 
-        // Add system instruction for JARVIS persona
-        if (config.systemInstruction) {
-          setupPayload.systemInstruction = {
-            parts: [{ text: config.systemInstruction }],
-          };
-        }
-
-        const setupMessage: GeminiSetupMessage = {
-          setup: setupPayload as GeminiSetupMessage['setup'],
-        };
+        const setupMessage = buildSetupMessage();
 
         try {
           ws.send(JSON.stringify(setupMessage));

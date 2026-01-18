@@ -15,6 +15,7 @@ interface UseGeminiVoiceAssistantOptions {
   onConnectionChange?: (connected: boolean) => void;
   onResponse?: (text: string) => void;
   onError?: (error: Error) => void;
+  onDebugLog?: (entry: { type: 'info' | 'warn' | 'error' | 'success'; message: string }) => void;
 }
 
 interface UseGeminiVoiceAssistantReturn {
@@ -24,14 +25,14 @@ interface UseGeminiVoiceAssistantReturn {
   isSpeaking: boolean;
   isScreenSharing: boolean;
   error: string | null;
-  
+
   // Actions
   connect: () => Promise<void>;
   disconnect: () => void;
   sendVoiceCommand: (text: string) => void;
   startScreenShare: () => Promise<void>;
   stopScreenShare: () => void;
-  
+
   // Audio controls
   setMuted: (muted: boolean) => void;
   setVolume: (volume: number) => void;
@@ -50,11 +51,12 @@ export function useGeminiVoiceAssistant(
     onConnectionChange,
     onResponse,
     onError,
+    onDebugLog,
   } = options;
 
   const [error, setError] = useState<string | null>(null);
   const hasAutoConnectedRef = useRef(false);
-  
+
   // Get saved voice preference
   const savedVoice = (() => {
     try {
@@ -63,7 +65,7 @@ export function useGeminiVoiceAssistant(
       return 'Kore';
     }
   })();
-  
+
   const voiceName = voiceNameProp || savedVoice;
 
   // Audio player for Gemini responses
@@ -105,6 +107,21 @@ Responda SEMPRE em português brasileiro. Seja conciso mas informativo nas respo
   // Gemini Live hook
   const gemini = useGeminiLive({
     config,
+    onWsEvent: (evt) => {
+      const base = `[GEMINI ${evt.type.toUpperCase()}]`;
+      const suffix = [
+        evt.model ? `model=${evt.model}` : null,
+        evt.code ? `code=${evt.code}` : null,
+        evt.reason ? `reason=${evt.reason}` : null,
+        evt.detail ? `detail=${evt.detail}` : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      const message = `${base}${suffix ? ' ' + suffix : ''}`;
+      const type = evt.type === 'error' ? 'error' : evt.type === 'close' ? 'warn' : evt.type === 'setup_complete' ? 'success' : 'info';
+      onDebugLog?.({ type, message });
+    },
     onResponse: (text, isFinal) => {
       if (isFinal && text) {
         onResponse?.(text);
@@ -115,6 +132,7 @@ Responda SEMPRE em português brasileiro. Seja conciso mas informativo nas respo
     },
     onError: (err) => {
       setError(err.message);
+      onDebugLog?.({ type: 'error', message: `[GEMINI ERROR] ${err.message}` });
       onError?.(err);
     },
     onStateChange: (state) => {
