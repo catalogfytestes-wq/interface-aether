@@ -59,7 +59,7 @@ serve(async (req) => {
     // Optionally lock to specific configuration
     if (systemInstruction) {
       tokenRequest.live_connect_constraints = {
-        model,
+        model: `models/${model}`,
         config: {
           response_modalities: responseModalities,
           system_instruction: { parts: [{ text: systemInstruction }] },
