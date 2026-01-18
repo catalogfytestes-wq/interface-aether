@@ -13,9 +13,10 @@ interface SystemLogsProps {
   isOpen: boolean;
   onClose: () => void;
   transparentMode?: boolean;
+  extraLogs?: LogEntry[];
 }
 
-const SystemLogs = ({ isOpen, onClose, transparentMode = false }: SystemLogsProps) => {
+const SystemLogs = ({ isOpen, onClose, transparentMode = false, extraLogs = [] }: SystemLogsProps) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -58,12 +59,14 @@ const SystemLogs = ({ isOpen, onClose, transparentMode = false }: SystemLogsProp
     return () => clearInterval(interval);
   }, [isOpen]);
 
+  const mergedLogs = [...logs, ...extraLogs].slice(-200);
+
   // Auto-scroll to bottom
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, autoScroll]);
+  }, [mergedLogs, autoScroll]);
 
   const clearLogs = () => {
     setLogs([{
@@ -132,9 +135,8 @@ const SystemLogs = ({ isOpen, onClose, transparentMode = false }: SystemLogsProp
             </div>
           </div>
 
-          {/* Logs Content */}
           <div className="h-[200px] overflow-y-auto p-2 font-mono text-[11px] scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
-            {logs.map((log) => (
+            {mergedLogs.map((log) => (
               <div key={log.id} className="flex gap-2 py-0.5 hover:bg-white/5 px-1 rounded">
                 <span className="text-white/30 shrink-0">{formatTime(log.timestamp)}</span>
                 <span className={`${getTypeColor(log.type)} shrink-0`}>
@@ -146,9 +148,8 @@ const SystemLogs = ({ isOpen, onClose, transparentMode = false }: SystemLogsProp
             <div ref={logsEndRef} />
           </div>
 
-          {/* Status Bar */}
           <div className="flex items-center justify-between px-4 py-1 border-t border-white/10 text-[10px] text-white/40">
-            <span>{logs.length} entradas</span>
+            <span>{mergedLogs.length} entradas</span>
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               Monitorando

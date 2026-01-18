@@ -14,6 +14,13 @@ import { toast } from 'sonner';
 
 type SystemMode = 'idle' | 'listening' | 'processing' | 'success' | 'error';
 
+type RuntimeLogEntry = {
+  id: string;
+  timestamp: Date;
+  type: 'info' | 'warn' | 'error' | 'success';
+  message: string;
+};
+
 interface HUDOverlayProps {
   isProcessing?: boolean;
 }
@@ -25,6 +32,7 @@ const HUDOverlay = ({
   const [transparentMode, setTransparentMode] = useState(false);
   const [systemMode, setSystemMode] = useState<SystemMode>('idle');
   const [logsOpen, setLogsOpen] = useState(false);
+  const [runtimeLogs, setRuntimeLogs] = useState<RuntimeLogEntry[]>([]);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMiniMode, setIsMiniMode] = useState(false);
   const [isTTSSpeaking, setIsTTSSpeaking] = useState(false);
@@ -41,9 +49,22 @@ const HUDOverlay = ({
   // Voice command callbacks
   const onWidgetCommand = useRef<(widget: string | null) => void>(() => {});
 
+  const pushRuntimeLog = useCallback((entry: Omit<RuntimeLogEntry, 'id' | 'timestamp'> & { timestamp?: Date }) => {
+    setRuntimeLogs((prev) => [
+      ...prev.slice(-199),
+      {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        timestamp: entry.timestamp ?? new Date(),
+        type: entry.type,
+        message: entry.message,
+      },
+    ]);
+  }, []);
+
   // ===== GEMINI VOICE ASSISTANT (AI que responde) =====
   const geminiAssistant = useGeminiVoiceAssistant({
     autoConnect: true,
+    onDebugLog: (entry) => pushRuntimeLog(entry),
     onSpeakingChange: (speaking) => {
       setIsTTSSpeaking(speaking);
       if (speaking) {
@@ -55,19 +76,24 @@ const HUDOverlay = ({
     onConnectionChange: (connected) => {
       if (connected) {
         console.log('🤖 JARVIS Gemini conectado e pronto!');
+        pushRuntimeLog({ type: 'success', message: '[JARVIS] Gemini conectado e pronto' });
         toast.success('JARVIS conectado!');
       } else {
         console.log('🤖 JARVIS Gemini desconectado');
+        pushRuntimeLog({ type: 'warn', message: '[JARVIS] Gemini desconectado' });
       }
     },
     onResponse: (text) => {
       console.log('🤖 JARVIS respondeu:', text);
+      pushRuntimeLog({ type: 'info', message: `[JARVIS] Resposta final recebida (${text.length} chars)` });
       setSystemMode('success');
       // Volta para idle após 2 segundos
       setTimeout(() => setSystemMode('idle'), 2000);
     },
     onError: (err) => {
       console.error('🤖 JARVIS erro:', err);
+      pushRuntimeLog({ type: 'error', message: `[JARVIS] ${err.message}` });
+      setLogsOpen(true);
       toast.error('Erro na conexão com JARVIS: ' + err.message);
       setSystemMode('error');
       // Volta para idle após 3 segundos
@@ -509,6 +535,18 @@ const HUDOverlay = ({
         isScreenSharing={geminiAssistant.isScreenSharing}
         isSpeaking={isTTSSpeaking || geminiAssistant.isSpeaking}
         audioLevel={geminiAssistant.audioLevel}
+        onReconnect={() => {
+          pushRuntimeLog({ type: 'warn', message: '[UI] Forçando reconexão do Gemini…' });
+          setLogsOpen(true);
+          try {
+            geminiAssistant.disconnect();
+          } catch {
+            // ignore
+          }
+          geminiAssistant.connect().catch((err) => {
+            pushRuntimeLog({ type: 'error', message: `[UI] Reconexão falhou: ${err instanceof Error ? err.message : String(err)}` });
+          });
+        }}
         onScreenShareToggle={() => {
           if (geminiAssistant.isScreenSharing) {
             geminiAssistant.stopScreenShare();
@@ -528,6 +566,7 @@ const HUDOverlay = ({
         isOpen={logsOpen}
         onClose={() => setLogsOpen(false)}
         transparentMode={transparentMode}
+        extraLogs={runtimeLogs}
       />
 
       {/* Particle Sphere Background */}

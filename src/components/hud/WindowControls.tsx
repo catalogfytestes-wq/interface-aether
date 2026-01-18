@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { X, Minus, Terminal, Wifi, WifiOff, Monitor, MonitorOff, Volume2, Loader2 } from 'lucide-react';
+import { X, Minus, Terminal, Wifi, WifiOff, Monitor, MonitorOff, Loader2, RefreshCw } from 'lucide-react';
 
 interface WindowControlsProps {
   onClose?: () => void;
@@ -14,6 +14,7 @@ interface WindowControlsProps {
   isSpeaking?: boolean;
   audioLevel?: number;
   onScreenShareToggle?: () => void;
+  onReconnect?: () => void;
 }
 
 // VU Meter Component for audio level
@@ -54,6 +55,7 @@ const WindowControls = ({
   isSpeaking = false,
   audioLevel = 0,
   onScreenShareToggle,
+  onReconnect,
 }: WindowControlsProps) => {
   return (
     <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
@@ -84,6 +86,19 @@ const WindowControls = ({
         {/* VU Meter when speaking */}
         {isGeminiConnected && (
           <MiniVUMeter level={audioLevel} isActive={isSpeaking} />
+        )}
+
+        {/* Force reconnect */}
+        {onReconnect && (
+          <motion.button
+            onClick={onReconnect}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="p-1 rounded text-white/50 hover:text-white/80 transition-colors"
+            title="Forçar reconexão do Gemini"
+          >
+            <RefreshCw size={12} />
+          </motion.button>
         )}
 
         {/* Screen Share Toggle */}
